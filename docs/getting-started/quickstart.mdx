@@ -1,0 +1,68 @@
+---
+title: "Quickstart"
+description: "Load your first model, inspect it, and run inference in under 2 minutes"
+---
+
+## Load → Inspect → Test
+
+<Steps>
+  <Step title="Load a model">
+    1. Click **Load** (01) in the sidebar
+    2. Click **LOAD GGUF FILE** (or **LOAD SAFETENSORS FILE** / **LOAD MODEL FOLDER**)
+    3. Select your model file in the dialog
+    4. Wait for header parsing (< 1 second)
+
+    You'll see model metadata: architecture, layers, parameters, quantization, and tensor map.
+  </Step>
+  <Step title="Inspect the architecture">
+    1. Click **Inspect** (02) in the sidebar
+    2. Explore the isometric 3D visualization — hover layers for details
+    3. Review memory distribution, quantization breakdown, and runtime compatibility
+  </Step>
+  <Step title="Run inference">
+    1. Click **Test** (09) in the sidebar
+    2. Click **USE LOADED** to select your model
+    3. Type a prompt (e.g., `"Hello, how are you?"`)
+    4. Click **GENERATE**
+    5. Watch tokens stream in real time
+  </Step>
+</Steps>
+
+<Note>
+  For GGUF inference, llama.cpp tools must be installed. Go to **Settings** (07) → llama.cpp Tools → **DOWNLOAD & INSTALL**.
+</Note>
+
+## Download → Quantize
+
+<Steps>
+  <Step title="Download from HuggingFace">
+    1. Click **Hub** (04) in the sidebar
+    2. Enter a repo ID (e.g., `TheBloke/Mistral-7B-Instruct-v0.2-GGUF`)
+    3. Click **FETCH**, then **DOWNLOAD** on a GGUF file
+  </Step>
+  <Step title="Load and quantize">
+    1. In Library view, click **LOAD** on the downloaded model
+    2. Go to **Optimize** (03)
+    3. Pick a quantization level (e.g., **BALANCED / Q5\_K\_M**)
+    4. Click **QUANTIZE MODEL** and choose output path
+  </Step>
+</Steps>
+
+## Merge two models
+
+<Steps>
+  <Step title="Load parents">
+    1. Click **M-DNA** (08) in the sidebar
+    2. In the Files tab, click **+ LOAD FILE** twice to load 2 models
+  </Step>
+  <Step title="Configure merge">
+    1. Go to Settings tab, select **SLERP** method
+    2. Set interpolation factor `t` (0.5 = equal blend)
+    3. Set output format and path
+  </Step>
+  <Step title="Build">
+    1. Click **BUILD MERGE**
+    2. Monitor progress
+    3. Result shows output path and size
+  </Step>
+</Steps>

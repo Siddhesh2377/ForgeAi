@@ -1,0 +1,73 @@
+---
+title: "Convert"
+description: "Convert SafeTensors models to GGUF format with configurable output types"
+icon: "arrows-rotate"
+---
+
+# Convert (05)
+
+Convert SafeTensors models (HuggingFace format) to GGUF files compatible with llama.cpp, Ollama, LM Studio, and other GGUF-based runtimes.
+
+<Note>
+  Requires **Python 3.10+** and a one-time dependency setup (~500 MB).
+</Note>
+
+## First-Time Setup
+
+<Steps>
+  <Step title="Detect Python">
+    ForgeAI checks for Python 3 on launch
+  </Step>
+  <Step title="Install dependencies">
+    Click **INSTALL DEPENDENCIES** — creates a virtual environment with `transformers`, `torch`, `safetensors`, `sentencepiece`, `protobuf`
+  </Step>
+  <Step title="GPU detection">
+    ForgeAI detects your GPU and installs the right PyTorch variant (CUDA for NVIDIA, CPU otherwise)
+  </Step>
+</Steps>
+
+The hero panel shows status indicators: PYTHON, VENV, SCRIPT, PACKAGES.
+
+## Output Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| **F16** | 16-bit float (default) | Best balance of size and precision |
+| **BF16** | Brain float 16 | Better precision for large models |
+| **F32** | Full 32-bit float | Maximum precision, largest file |
+| **Q8\_0** | 8-bit quantized | Smaller output, slight quality loss |
+| **AUTO** | Detect from source | Matches source precision |
+
+## Model Analysis
+
+After selecting a source, ForgeAI shows:
+
+| Field | Description |
+|-------|-------------|
+| ARCHITECTURE | Model architecture (e.g., LlamaForCausalLM) |
+| HIDDEN SIZE | Embedding dimension |
+| LAYERS | Number of transformer layers |
+| VOCAB SIZE | Tokenizer vocabulary size |
+| SAFETENSORS | Number of weight files |
+
+File checks verify: `config.json` (required), tokenizer files, safetensors weights.
+
+## Workflow
+
+<Steps>
+  <Step title="Select source">
+    Pick a SafeTensors repo from the list (downloaded via Hub) or click **GO TO HUB**
+  </Step>
+  <Step title="Review analysis">
+    Check architecture, file counts, and file checks
+  </Step>
+  <Step title="Choose output type">
+    Select F16, BF16, F32, Q8\_0, or AUTO
+  </Step>
+  <Step title="Convert">
+    Click **CONVERT TO GGUF**, choose output location, monitor progress
+  </Step>
+  <Step title="Result">
+    See output path and size. Click **LOAD MODEL** to use immediately.
+  </Step>
+</Steps>

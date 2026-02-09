@@ -1,0 +1,74 @@
+---
+title: "Quantization Levels"
+description: "Understanding GGUF quantization types, quality trade-offs, and recommended levels"
+icon: "compress"
+---
+
+# Quantization Levels
+
+Quantization reduces model precision to decrease file size and increase inference speed, with a trade-off in output quality.
+
+## Overview
+
+| Level | Type | Bits/Weight | Est. Quality | Size (7B) | Speed |
+|-------|------|:-----------:|:------------:|:---------:|:-----:|
+| EXTREME | Q2\_K | 2.63 | ~60% | ~2.5 GB | Fastest |
+| TINY | Q3\_K\_S | 3.50 | ~68% | ~3.2 GB | Very fast |
+| SMALL | Q3\_K\_M | 3.91 | ~72% | ~3.6 GB | Fast |
+| COMPACT | Q4\_K\_M | 4.85 | ~80% | ~4.4 GB | Fast |
+| BALANCED | Q5\_K\_M | 5.69 | ~87% | ~5.1 GB | Moderate |
+| HIGH | Q6\_K | 6.56 | ~93% | ~5.9 GB | Moderate |
+| ULTRA | Q8\_0 | 8.50 | ~98% | ~7.6 GB | Slower |
+
+<Note>
+  Sizes shown are approximate for a 7B parameter model. Actual sizes depend on model architecture.
+</Note>
+
+## How Quantization Works
+
+Full-precision models store each weight as a 16-bit or 32-bit floating point number. Quantization maps these values to lower bit representations:
+
+- **Q8\_0**: 8-bit integer quantization with minimal quality loss
+- **Q6\_K**: 6-bit with K-quant optimization
+- **Q4\_K\_M**: 4-bit mixed precision (important layers get higher precision)
+- **Q2\_K**: 2-bit aggressive compression
+
+The "K" in K-quant types means the quantization uses importance-based allocation — more important tensors get higher precision.
+
+## Choosing a Level
+
+<CardGroup cols={3}>
+  <Card title="Mobile / Edge" icon="mobile">
+    **Q3\_K\_M or Q4\_K\_M**
+
+    For phones, Raspberry Pi, or systems with less than 8 GB RAM. Noticeable quality loss but usable.
+  </Card>
+  <Card title="Desktop / Laptop" icon="laptop">
+    **Q5\_K\_M** (recommended)
+
+    Best balance for most users. Good quality with significant size reduction.
+  </Card>
+  <Card title="Server / Production" icon="server">
+    **Q8\_0**
+
+    Near-original quality. Use when output quality is critical and storage/RAM is not a concern.
+  </Card>
+</CardGroup>
+
+## Requantization Warning
+
+<Warning>
+  Quantizing an already-quantized model degrades quality further. Always quantize from the highest available precision (F16 or F32 source).
+</Warning>
+
+If your model is already Q4\_K\_M, quantizing to Q8\_0 will **not** improve quality — it just makes the file bigger with no benefit.
+
+## RAM Requirements
+
+As a rule of thumb, you need roughly **1.2x the file size** in RAM to load a GGUF model for inference:
+
+| Quantization | 7B Model | 13B Model | 70B Model |
+|:------------:|:--------:|:---------:|:---------:|
+| Q4\_K\_M | ~5.3 GB | ~9.6 GB | ~42 GB |
+| Q5\_K\_M | ~6.1 GB | ~11 GB | ~49 GB |
+| Q8\_0 | ~9.1 GB | ~17 GB | ~74 GB |

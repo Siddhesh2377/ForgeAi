@@ -1,0 +1,82 @@
+---
+title: "Installation"
+description: "System requirements and how to install ForgeAI"
+---
+
+## System Requirements
+
+<CardGroup cols={2}>
+  <Card title="Minimum" icon="hard-drive">
+    - **OS**: Linux, macOS, or Windows
+    - **RAM**: 8 GB
+    - **Disk**: 2 GB + space for your models
+    - **CPU**: x86\_64 or ARM64
+  </Card>
+  <Card title="Recommended" icon="rocket">
+    - **RAM**: 16 GB+
+    - **GPU**: NVIDIA (CUDA), AMD (Vulkan), or Apple Silicon (Metal)
+    - **Disk**: SSD with 50 GB+ free
+    - **Python 3.10+** for SafeTensors conversion
+  </Card>
+</CardGroup>
+
+## Install
+
+<Steps>
+  <Step title="Download the release">
+    Download the latest release for your platform from the [releases page](https://github.com/yourusername/ForgeAi/releases).
+
+    | Platform | File |
+    |----------|------|
+    | Linux | `forgeai_x.x.x_amd64.AppImage` or `.deb` |
+    | macOS | `ForgeAI_x.x.x.dmg` |
+    | Windows | `ForgeAI_x.x.x_x64-setup.exe` |
+  </Step>
+  <Step title="Run the installer">
+    - **Linux**: Make the AppImage executable (`chmod +x`) and run, or install the `.deb`
+    - **macOS**: Open the `.dmg` and drag ForgeAI to Applications
+    - **Windows**: Run the setup executable
+  </Step>
+  <Step title="First launch">
+    Open ForgeAI. You'll land on the Dashboard (module 00).
+  </Step>
+</Steps>
+
+## Optional: GPU Setup
+
+For accelerated inference and conversion, install GPU drivers:
+
+<Tabs>
+  <Tab title="NVIDIA (CUDA)">
+    1. Install NVIDIA drivers (515+ recommended)
+    2. CUDA toolkit is bundled with llama.cpp — no separate install needed
+    3. In ForgeAI Settings, install llama.cpp with the **CUDA** variant
+  </Tab>
+  <Tab title="AMD / Intel (Vulkan)">
+    1. Install Vulkan drivers for your GPU
+    2. In ForgeAI Settings, install llama.cpp with the **Vulkan** variant
+  </Tab>
+  <Tab title="Apple Silicon (Metal)">
+    1. Metal is built into macOS — no extra drivers needed
+    2. In ForgeAI Settings, install llama.cpp with the default variant
+  </Tab>
+  <Tab title="CPU Only">
+    No extra setup needed. In ForgeAI Settings, install llama.cpp with the **CPU** variant.
+  </Tab>
+</Tabs>
+
+## Optional: Python (for Convert module)
+
+The Convert module (SafeTensors → GGUF) requires Python 3.10+.
+
+<Steps>
+  <Step title="Verify Python">
+    ```bash
+    python3 --version
+    ```
+    If not installed, get it from [python.org](https://python.org) or your package manager.
+  </Step>
+  <Step title="Auto-setup in ForgeAI">
+    Navigate to the Convert module. ForgeAI will detect Python and prompt you to install dependencies (virtual environment with `transformers`, `torch`, etc.). This is a one-time setup (~500 MB).
+  </Step>
+</Steps>

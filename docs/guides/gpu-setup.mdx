@@ -1,0 +1,83 @@
+---
+title: "GPU Setup"
+description: "Configure GPU acceleration for inference and conversion"
+icon: "microchip"
+---
+
+# GPU Setup
+
+ForgeAI uses GPU acceleration for inference (Test module) and model conversion (Convert module).
+
+## Auto-Detection
+
+Go to **Settings** (07) to see your detected hardware:
+
+| Field | Description |
+|-------|-------------|
+| NVIDIA | GPU name, VRAM, CUDA version |
+| VULKAN | Cross-platform GPU API support |
+| METAL | Apple Silicon support (macOS) |
+
+## llama.cpp Variants
+
+For GGUF inference and quantization, install the appropriate llama.cpp variant:
+
+<Tabs>
+  <Tab title="CUDA (NVIDIA)">
+    **Fastest option for NVIDIA GPUs.**
+
+    Requirements:
+    - NVIDIA GPU (GTX 1060+ / RTX series)
+    - NVIDIA drivers 515+
+
+    In Settings → llama.cpp Tools → select **CUDA** → **DOWNLOAD & INSTALL**
+  </Tab>
+  <Tab title="Vulkan (Cross-platform)">
+    **Works with NVIDIA, AMD, and Intel GPUs.**
+
+    Requirements:
+    - Vulkan-compatible GPU
+    - Vulkan drivers installed
+
+    In Settings → llama.cpp Tools → select **VULKAN** → **DOWNLOAD & INSTALL**
+  </Tab>
+  <Tab title="CPU">
+    **Universal fallback, no GPU needed.**
+
+    Works on any system. Slower than GPU variants but always available.
+
+    In Settings → llama.cpp Tools → select **CPU** → **DOWNLOAD & INSTALL**
+  </Tab>
+</Tabs>
+
+## SafeTensors Inference (Python)
+
+The Test module uses HuggingFace Transformers for SafeTensors models:
+
+- **NVIDIA GPU detected**: PyTorch is installed with CUDA support automatically during Convert module setup
+- **No GPU**: CPU-only PyTorch is installed
+- **OOM fallback**: If the model doesn't fit in GPU VRAM, ForgeAI automatically falls back to CPU inference
+
+## VRAM Requirements
+
+Approximate VRAM needed to load models on GPU:
+
+| Model Size | Q4\_K\_M | Q8\_0 | F16 |
+|:----------:|:--------:|:-----:|:---:|
+| 7B | ~4.5 GB | ~7.5 GB | ~14 GB |
+| 13B | ~8 GB | ~14 GB | ~26 GB |
+| 70B | ~40 GB | ~70 GB | ~140 GB |
+
+<Tip>
+  If your model exceeds VRAM, GGUF inference via llama.cpp can offload some layers to CPU RAM. SafeTensors inference will auto-fallback to full CPU mode.
+</Tip>
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| GPU not detected | Update NVIDIA/Vulkan drivers |
+| CUDA variant fails to install | Ensure NVIDIA drivers are 515+ |
+| Slow inference despite GPU | Check Settings to confirm CUDA/Vulkan variant is installed, not CPU |
+| Out of memory | Use a smaller quantization (Q4\_K\_M instead of Q8\_0) or switch to CPU |
+| SafeTensors shows CPU device | Re-run Convert module setup to reinstall PyTorch with CUDA |

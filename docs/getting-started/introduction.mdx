@@ -1,0 +1,82 @@
+---
+title: "Introduction"
+description: "ForgeAI — Local-first desktop tool for loading, inspecting, optimizing, merging, and testing AI models"
+---
+
+# What is ForgeAI?
+
+ForgeAI is a local-first desktop application for working with AI models. Load GGUF and SafeTensors models, inspect their architecture, quantize for deployment, merge multiple models into hybrids, and test inference — all without uploading anything to the cloud.
+
+<CardGroup cols={2}>
+  <Card title="Load Models" icon="upload">
+    Import GGUF files, SafeTensors files, or sharded HuggingFace model folders from disk
+  </Card>
+  <Card title="Inspect Architecture" icon="microscope">
+    Analyze memory layout, tensor composition, quantization distribution, and runtime compatibility
+  </Card>
+  <Card title="Optimize & Quantize" icon="bolt">
+    Compress GGUF models across 7 quantization levels — from Q2_K to Q8_0
+  </Card>
+  <Card title="Merge Models" icon="dna">
+    Combine 2–5 parent models into hybrids using SLERP, TIES, DARE, Frankenmerge, and more
+  </Card>
+</CardGroup>
+
+## Capabilities
+
+| Capability | Description |
+|-----------|-------------|
+| **Load** | Import GGUF files, SafeTensors files, or sharded model folders from disk |
+| **Inspect** | Analyze architecture, memory layout, tensor composition, quantization, and runtime compatibility |
+| **Optimize** | Quantize GGUF models across 7 compression levels (Q2\_K through Q8\_0) |
+| **Hub** | Download models from HuggingFace and manage a local model library |
+| **Convert** | Convert SafeTensors models to GGUF format with configurable output types |
+| **M-DNA Forge** | Merge 2–5 parent models into hybrid offspring using SLERP, TIES, DARE, Frankenmerge, and more |
+| **Test** | Run inference on loaded models with real-time token streaming and performance stats |
+
+## Tech Stack
+
+<CardGroup cols={3}>
+  <Card title="Frontend" icon="window">
+    SvelteKit 5 with Svelte 5 runes
+  </Card>
+  <Card title="Backend" icon="gear">
+    Rust via Tauri v2
+  </Card>
+  <Card title="Tensors" icon="cube">
+    Candle (Rust ML framework)
+  </Card>
+  <Card title="GGUF Inference" icon="terminal">
+    llama.cpp
+  </Card>
+  <Card title="ST Inference" icon="python">
+    HuggingFace Transformers
+  </Card>
+  <Card title="Model Hub" icon="cloud-arrow-down">
+    HuggingFace API
+  </Card>
+</CardGroup>
+
+## Supported Formats
+
+| Format | Load | Inspect | Optimize | Convert | Merge | Test |
+|--------|:----:|:-------:|:--------:|:-------:|:-----:|:----:|
+| **GGUF** | ✓ | ✓ | ✓ | Output | ✓ | ✓ |
+| **SafeTensors** | ✓ | ✓ | — | Input | ✓ | ✓ |
+| **Sharded Folders** | ✓ | ✓ | — | Input | ✓ | ✓ |
+
+## Navigation
+
+ForgeAI uses a sidebar with module codes:
+
+| Code | Module | Purpose |
+|------|--------|---------|
+| 00 | Dashboard | Overview and quick access |
+| 01 | Load | Import models from disk |
+| 02 | Inspect | Analyze model architecture |
+| 03 | Optimize | Quantize GGUF models |
+| 04 | Hub | Download from HuggingFace |
+| 05 | Convert | SafeTensors → GGUF |
+| 07 | Settings | Theme, GPU, tools config |
+| 08 | M-DNA | Merge models |
+| 09 | Test | Run inference |

@@ -1,0 +1,483 @@
+/* ═══════════════════════════════════════════════════════════
+   FORGEAI — Industrial Label Design System
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Base Tokens (Dark Default) ────────────────────────── */
+:root {
+  --font-mono: "JetBrains Mono", "Cascadia Code", "Fira Code", "SF Mono",
+    "Consolas", "DejaVu Sans Mono", "Liberation Mono", monospace;
+
+  --bg-base: #0b0b0b;
+  --bg-surface: #111111;
+  --bg-raised: #181818;
+  --bg-hover: #1e1e1e;
+  --bg-inset: #090909;
+
+  --border-dim: #1e1e1e;
+  --border: #2a2a2a;
+  --border-strong: #3a3a3a;
+
+  --text-primary: #d4d4d4;
+  --text-secondary: #737373;
+  --text-muted: #4a4a4a;
+
+  /* Accent: Amber (permanent brand color) */
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  --accent-dim: #78350f;
+  --accent-bg: rgba(245, 158, 11, 0.08);
+  --on-accent: rgba(245, 158, 11, 0.11);
+
+  /* State Colors */
+  --danger: #ef4444;
+  --on-danger: rgba(239, 68, 68, 0.11);
+  --success: #22c55e;
+  --on-success: rgba(34, 197, 94, 0.11);
+  --info: #3b82f6;
+  --on-info: rgba(59, 130, 246, 0.11);
+  --gray: #737373;
+  --on-gray: rgba(115, 115, 115, 0.11);
+
+  --radius: 0px;
+  --transition: 120ms ease;
+  --theme-transition: 300ms ease;
+}
+
+[data-theme="light"] {
+  --bg-base: #edecea;
+  --bg-surface: #f5f5f2;
+  --bg-raised: #fafaf8;
+  --bg-hover: #e8e8e4;
+  --bg-inset: #e2e2de;
+
+  --border-dim: #ddddd8;
+  --border: #c8c8c0;
+  --border-strong: #a0a098;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b6b6b;
+  --text-muted: #a0a0a0;
+
+  --accent: #d97706;
+  --accent-hover: #b45309;
+  --accent-dim: #fef3c7;
+  --accent-bg: rgba(217, 119, 6, 0.06);
+  --on-accent: rgba(217, 119, 6, 0.08);
+}
+
+/* ── Reset ─────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ── Smooth Theme Transitions ──────────────────────────── */
+body,
+.panel,
+.panel-flat,
+.panel-inset {
+  transition:
+    background-color var(--theme-transition),
+    color var(--theme-transition),
+    border-color var(--theme-transition);
+}
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Typography ────────────────────────────────────────── */
+.label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-secondary);
+  line-height: 1;
+}
+
+.label-xs {
+  font-size: 8px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.code {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.heading-lg {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.heading-md {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.heading-sm {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+
+.danger-text {
+  color: var(--danger);
+  font-size: 10px;
+  font-weight: bold;
+  font-family: "Maple Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  line-height: 1;
+}
+
+/* ── Panel (industrial card) ───────────────────────────── */
+.panel {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+
+.panel::before,
+.panel::after {
+  content: "";
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  z-index: 1;
+  transition: border-color var(--theme-transition);
+}
+
+.panel::before {
+  top: -1px;
+  left: -1px;
+  border-top: 2px solid var(--accent);
+  border-left: 2px solid var(--accent);
+}
+
+.panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.panel-flat {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+
+.panel-inset {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-dim);
+  padding: 12px;
+}
+
+/* ── Dividers ──────────────────────────────────────────── */
+.divider-h {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0;
+}
+
+.divider-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+}
+
+.divider-label::before,
+.divider-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Barcode Decoration ────────────────────────────────── */
+.barcode {
+  height: 18px;
+  width: 100%;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--text-muted) 0px,
+    var(--text-muted) 1.5px,
+    transparent 1.5px,
+    transparent 3px,
+    var(--text-muted) 3px,
+    var(--text-muted) 4px,
+    transparent 4px,
+    transparent 7px,
+    var(--text-muted) 7px,
+    var(--text-muted) 8.5px,
+    transparent 8.5px,
+    transparent 10px,
+    var(--text-muted) 10px,
+    var(--text-muted) 11px,
+    transparent 11px,
+    transparent 15px
+  );
+  opacity: 0.35;
+}
+
+/* ── Dot Grid Background ──────────────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(
+    circle,
+    var(--border) 0.5px,
+    transparent 0.5px
+  );
+  background-size: 12px 12px;
+}
+
+/* ── Badge / Status Indicator ──────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  line-height: 1;
+  transition:
+    border-color var(--theme-transition),
+    color var(--theme-transition);
+}
+
+.badge-accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge-success {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.badge-dim {
+  border-color: var(--border-dim);
+  color: var(--text-muted);
+}
+
+/* ── Status Dot ────────────────────────────────────────── */
+.dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 0;
+  background: var(--text-muted);
+  transition: background-color var(--theme-transition);
+}
+
+.dot-active {
+  background: var(--accent);
+}
+
+.dot-success {
+  background: var(--success);
+}
+
+.dot-danger {
+  background: var(--danger);
+}
+
+/* ── Button ────────────────────────────────────────────── */
+.btn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition);
+  line-height: 1;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn-accent {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-accent:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-hover);
+  color: var(--accent-hover);
+}
+
+.btn-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.btn-ghost:hover {
+  background: var(--bg-hover);
+  border-color: var(--border);
+}
+
+/* ── Selection ─────────────────────────────────────────── */
+::selection {
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+}
+
+/* ── Links ─────────────────────────────────────────────── */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--transition);
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+/* ── Transitions ───────────────────────────────────────── */
+.fade-in {
+  animation: fadeIn 200ms ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── State Utilities ───────────────────────────────────── */
+.badge-info {
+  border-color: var(--info);
+  color: var(--info);
+}
+
+.badge-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.dot-working {
+  background: var(--info);
+}
+
+.dot-paused {
+  background: var(--gray);
+}
+
+.btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: var(--on-danger);
+}
+
+.btn-success {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.btn-success:hover {
+  background: var(--on-success);
+}
+
+.btn-info {
+  border-color: var(--info);
+  color: var(--info);
+}
+
+.btn-info:hover {
+  background: var(--on-info);
+}
+
+.btn-secondary {
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.btn-secondary:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 9px;
+}

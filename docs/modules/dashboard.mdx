@@ -1,0 +1,50 @@
+---
+title: "Dashboard"
+description: "Central hub displaying system status and quick access to all ForgeAI modules"
+icon: "house"
+---
+
+# Dashboard (00)
+
+The Dashboard is the first screen when ForgeAI launches. It shows current model status and provides quick access to every module.
+
+## Hero Panel
+
+Displays the ForgeAI brand and a specs grid:
+
+| Field | Description |
+|-------|-------------|
+| STATUS | Current state — IDLE, LOADED, or ERROR |
+| MODEL | Name of loaded model or "NONE" |
+| FORMAT | GGUF or SAFETENSORS |
+| PARAMS | Parameter count (e.g., 7.24B) |
+| SIZE | File size on disk |
+| QUANT | Quantization type (e.g., Q4\_K\_M) |
+
+## Model Status
+
+- **No model loaded**: Dashed-border prompt with a **LOAD MODEL** button
+- **Model loaded**: Green panel showing model name, format, parameter count, and file size
+
+## Module Grid
+
+A 3-column grid of cards for each module:
+
+| Module | Availability | Formats |
+|--------|-------------|---------|
+| Load | Always ready | GGUF, SafeTensors |
+| Inspect | Requires loaded model | GGUF, SafeTensors |
+| Optimize | Requires loaded GGUF | GGUF only |
+| Hub | Always ready | GGUF, SafeTensors |
+| Convert | Always ready | SafeTensors input |
+| M-DNA | Always ready | GGUF, SafeTensors |
+| Test | Always ready | GGUF, SafeTensors |
+
+Modules that require a loaded model show a **REQUIRES MODEL** overlay when no model is present.
+
+## Status Bar
+
+Persistent across all screens at the bottom of the app:
+- Current model name and format
+- Parameter count
+- CPU, memory, and version info

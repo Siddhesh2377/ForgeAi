@@ -1,0 +1,70 @@
+---
+title: "Settings"
+description: "Configure appearance, manage GPU detection, and install llama.cpp tools"
+icon: "gear"
+---
+
+# Settings (07)
+
+Configure appearance, GPU, and llama.cpp tool management.
+
+## Theme
+
+| Theme | Description |
+|-------|-------------|
+| **Dark** (default) | Dark background with monochrome + amber accents |
+| **Light** | Light background variant |
+
+Click a theme card to switch. Changes apply immediately.
+
+## Layout
+
+| Layout | Description |
+|--------|-------------|
+| **Stretched** | Content fills the full window width |
+| **Centered** | Content constrained to a max width |
+
+## GPU Detection
+
+ForgeAI auto-detects your hardware:
+
+| Field | Description |
+|-------|-------------|
+| OS | Operating system |
+| ARCH | CPU architecture |
+| NVIDIA | GPU name, VRAM, CUDA version |
+| VULKAN | Vulkan support status |
+| METAL | Metal support (macOS) |
+| RECOMMENDED | Suggested llama.cpp variant |
+
+## llama.cpp Tools
+
+Required for GGUF quantization (Optimize) and GGUF inference (Test).
+
+### Install
+
+<Steps>
+  <Step title="Review recommendation">
+    Check the recommended variant from GPU detection
+  </Step>
+  <Step title="Select variant">
+    **CPU** (universal), **CUDA** (NVIDIA, fastest), or **VULKAN** (cross-platform GPU)
+  </Step>
+  <Step title="Download">
+    Click **DOWNLOAD & INSTALL**
+  </Step>
+</Steps>
+
+### Manage
+
+When installed: version info, path, **REINSTALL** and **REMOVE** buttons.
+
+## Color Semantics
+
+| Color | Role |
+|-------|------|
+| **Amber** | Idle, accent, interactive elements |
+| **Blue** | Working, in-progress operations |
+| **Green** | Success, loaded, complete |
+| **Red** | Error, failure, destructive actions |
+| **Gray** | Paused, disabled, inactive |

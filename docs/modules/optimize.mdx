@@ -1,0 +1,71 @@
+---
+title: "Optimize"
+description: "Quantize GGUF models across 7 compression levels with real-time size and quality preview"
+icon: "bolt"
+---
+
+# Optimize (03)
+
+Quantize GGUF models to smaller sizes using llama-quantize. Preview estimated size, quality, and speed before running.
+
+<Note>
+  Requires a loaded **GGUF** model and **llama.cpp tools** installed (see Settings).
+</Note>
+
+## Quantization Levels
+
+| Level | Type | Bits/Weight | Quality | Use Case |
+|-------|------|:-----------:|:-------:|----------|
+| EXTREME | Q2\_K | 2.63 | ~60% | Smallest possible, significant quality loss |
+| TINY | Q3\_K\_S | 3.50 | ~68% | Very small, noticeable quality loss |
+| SMALL | Q3\_K\_M | 3.91 | ~72% | Small with better quality |
+| COMPACT | Q4\_K\_M | 4.85 | ~80% | Good balance for most use cases |
+| BALANCED | Q5\_K\_M | 5.69 | ~87% | Recommended general purpose |
+| HIGH | Q6\_K | 6.56 | ~93% | Near-original quality |
+| ULTRA | Q8\_0 | 8.50 | ~98% | Minimal quality loss |
+
+## Presets
+
+<CardGroup cols={3}>
+  <Card title="MOBILE" icon="mobile">
+    **Q3\_K\_M** — Edge devices, phones, low-RAM systems
+  </Card>
+  <Card title="BALANCED" icon="scale-balanced">
+    **Q5\_K\_M** — General purpose desktops and laptops
+  </Card>
+  <Card title="QUALITY" icon="star">
+    **Q8\_0** — Production servers, quality-critical applications
+  </Card>
+</CardGroup>
+
+## Size & Quality Preview
+
+Before quantizing, a preview shows:
+
+- **Before/After** file sizes with reduction percentage
+- **Component breakdown**: attention, MLP, embeddings, output head, norms
+- **Quality estimate** bar
+- **Speed improvement** relative to original
+
+<Warning>
+  Requantizing an already-quantized model produces worse results than quantizing from a high-precision source.
+</Warning>
+
+## Workflow
+
+<Steps>
+  <Step title="Load a GGUF model">
+    Use the Load module to import a GGUF file
+  </Step>
+  <Step title="Select target level">
+    Click a level button or preset card
+  </Step>
+  <Step title="Review preview">
+    Check estimated size, quality, and speed
+  </Step>
+  <Step title="Quantize">
+    Click **QUANTIZE MODEL**, choose output path, monitor progress
+  </Step>
+</Steps>
+
+The original model is never modified — output is a new GGUF file.

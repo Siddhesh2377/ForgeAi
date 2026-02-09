@@ -1,0 +1,112 @@
+---
+title: "Merge Methods"
+description: "Detailed guide to all merge methods available in M-DNA Forge"
+icon: "dna"
+---
+
+# Merge Methods
+
+M-DNA Forge supports 8 merge strategies, each suited to different scenarios.
+
+## SLERP
+
+**Spherical Linear Interpolation** — the recommended method for merging 2 models.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| t | 0–1 | 0.5 | Interpolation factor. 0 = 100% model A, 1 = 100% model B |
+
+SLERP interpolates on the hypersphere rather than linearly, which preserves the magnitude of weight vectors and typically produces more coherent results than simple averaging.
+
+**Best for:** 2 models with similar architecture and training data.
+
+## Average
+
+**Weighted Mean** — simplest merge, averages all tensors by weight.
+
+<Warning>
+  AVERAGE on dissimilar models often produces incoherent output. Use SLERP or Frankenmerge instead.
+</Warning>
+
+Weights are normalized to sum to 1.0 automatically.
+
+**Best for:** Very similar models (e.g., same model at different training checkpoints).
+
+## Passthrough
+
+**Layer Stacking** — concatenates layers from parents sequentially.
+
+Creates a larger model by stacking all layers from each parent. No layer assignments needed — all layers from parent A come first, then parent B.
+
+**Best for:** Creating deeper models from compatible architectures.
+
+## Frankenmerge
+
+**Layer Cherry-Picking** — select which parent provides each output layer.
+
+Requires explicit **layer assignments** (set in the Layers tab). Each offspring layer is a direct copy from a chosen parent's layer.
+
+Auto-assign options:
+- **SPLIT**: Alternating (A, B, A, B...)
+- **INTERLEAVE**: Equal chunks
+
+**Best for:** Combining strengths from different layers (e.g., reasoning layers from one model + language layers from another).
+
+## Task Arithmetic
+
+**Task Vector Addition** — requires a base model.
+
+Computes task vectors (`finetune - base`) for each parent, scales them, and adds them back to the base.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| scaling\_factor | 0–2 | 1.0 | How strongly task vectors are applied |
+
+**Best for:** Combining multiple finetunes of the same base model.
+
+## TIES
+
+**Trim, Elect Sign, Merge** — resolves interference between task vectors.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| density | 0–1 | 0.5 | Fraction of parameters to keep |
+
+Trims small-magnitude parameters, resolves sign conflicts by majority vote, then merges. Produces cleaner results than Task Arithmetic.
+
+**Best for:** Base + multiple finetunes where task vectors conflict.
+
+## DARE
+
+**Drop And REscale** — prunes delta parameters before merging.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| density | 0–1 | 0.5 | Fraction of delta parameters to keep |
+
+Randomly drops delta parameters and rescales the remainder to maintain expected magnitude.
+
+**Best for:** Similar to TIES but with random pruning instead of magnitude-based.
+
+## DeLLa
+
+**Density-based Layer-Level Adaptive** — adapts merge density per layer.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| density | 0–1 | 0.5 | Base density, adapted per layer |
+
+Uses layer-level analysis to set different densities for different layers, giving more weight to layers that differ more.
+
+**Best for:** Advanced merges where uniform density across layers is suboptimal.
+
+## Quick Reference
+
+| Scenario | Recommended Method |
+|----------|-------------------|
+| 2 similar models | SLERP (t=0.5) |
+| Base + 1 finetune | TIES or DARE |
+| Base + multiple finetunes | Task Arithmetic |
+| Cherry-pick specific layers | Frankenmerge |
+| Create deeper model | Passthrough |
+| Quick experiment | Average (with caution) |

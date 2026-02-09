@@ -1,0 +1,87 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "ForgeAI",
+  "colors": {
+    "primary": "#f59e0b",
+    "light": "#fbbf24",
+    "dark": "#d97706"
+  },
+  "logo": {
+    "light": "/logo/forgeai-light.svg",
+    "dark": "/logo/forgeai-dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "appearance": {
+    "default": "dark",
+    "strict": false
+  },
+  "fonts": {
+    "family": "JetBrains Mono"
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/yourusername/ForgeAi"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Download",
+      "href": "https://github.com/yourusername/ForgeAi/releases"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/introduction",
+              "getting-started/installation",
+              "getting-started/quickstart"
+            ]
+          },
+          {
+            "group": "Modules",
+            "pages": [
+              "modules/dashboard",
+              "modules/load",
+              "modules/inspect",
+              "modules/optimize",
+              "modules/hub",
+              "modules/convert",
+              "modules/dna",
+              "modules/test",
+              "modules/settings"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/supported-formats",
+              "guides/merge-methods",
+              "guides/quantization-levels",
+              "guides/gpu-setup"
+            ]
+          }
+        ]
+      }
+    ],
+    "anchors": [
+      {
+        "anchor": "GitHub",
+        "icon": "github",
+        "href": "https://github.com/yourusername/ForgeAi"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/yourusername/ForgeAi"
+    }
+  }
+}

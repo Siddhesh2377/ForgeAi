@@ -1,0 +1,77 @@
+---
+title: "Supported Formats"
+description: "GGUF and SafeTensors format support across all ForgeAI modules"
+icon: "file"
+---
+
+# Supported Formats
+
+ForgeAI works with two primary model formats: **GGUF** and **SafeTensors**.
+
+## GGUF
+
+The **GGUF** (GPT-Generated Unified Format) is the standard format for llama.cpp and its ecosystem.
+
+**Characteristics:**
+- Single file containing weights, metadata, and tokenizer
+- Supports quantized dtypes (Q2\_K through Q8\_0, plus F16/F32)
+- Used by llama.cpp, Ollama, LM Studio, KoboldCpp
+
+**ForgeAI support:**
+| Module | Support |
+|--------|---------|
+| Load | Single file |
+| Inspect | Full analysis |
+| Optimize | Quantize to any level |
+| Hub | Download from HuggingFace |
+| Convert | Output format |
+| M-DNA | Parent and output |
+| Test | Via llama.cpp |
+
+## SafeTensors
+
+**SafeTensors** is HuggingFace's format for storing model weights safely and efficiently.
+
+**Characteristics:**
+- Typically paired with `config.json` and tokenizer files in a directory
+- Large models are sharded across multiple `.safetensors` files
+- Supports F16, BF16, F32 dtypes
+- Used by HuggingFace Transformers, vLLM, ExLlamaV2, MLX
+
+**ForgeAI support:**
+| Module | Support |
+|--------|---------|
+| Load | Single file or sharded folder |
+| Inspect | Full analysis |
+| Optimize | Not supported (convert to GGUF first) |
+| Hub | Download from HuggingFace |
+| Convert | Input format (→ GGUF) |
+| M-DNA | Parent and output |
+| Test | Via HuggingFace Transformers |
+
+## Folder Structure
+
+SafeTensors models from HuggingFace typically have this structure:
+
+```
+model-name/
+├── config.json              # Architecture config (required)
+├── tokenizer.json           # Tokenizer data
+├── tokenizer_config.json    # Tokenizer settings
+├── tokenizer.model          # SentencePiece model (some architectures)
+├── special_tokens_map.json  # Special token definitions
+├── generation_config.json   # Generation defaults
+├── model.safetensors        # Weights (single file)
+└── model-00001-of-00003.safetensors  # Or sharded
+```
+
+## Format Comparison
+
+| Feature | GGUF | SafeTensors |
+|---------|------|-------------|
+| File count | Single file | Multiple files |
+| Metadata | Embedded in file | Separate JSON files |
+| Tokenizer | Embedded | Separate files |
+| Quantization | Native (Q2–Q8) | F16/BF16/F32 only |
+| Sharding | No | Yes |
+| Ecosystem | llama.cpp | HuggingFace |

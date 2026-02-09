@@ -1,0 +1,80 @@
+---
+title: "Load"
+description: "Import AI models from disk — GGUF files, SafeTensors files, or sharded model folders"
+icon: "upload"
+---
+
+# Load (01)
+
+The Load module imports AI models into ForgeAI. It parses model headers without reading the full file, extracting metadata, tensor maps, and architecture information.
+
+## Load Options
+
+<CardGroup cols={3}>
+  <Card title="GGUF File" icon="file">
+    Single `.gguf` file — quantized models from the llama.cpp ecosystem
+  </Card>
+  <Card title="SafeTensors File" icon="file">
+    Single `.safetensors` file — HuggingFace model weights
+  </Card>
+  <Card title="Model Folder" icon="folder">
+    Directory with `.safetensors` + `config.json` — sharded HuggingFace models
+  </Card>
+</CardGroup>
+
+## What Gets Parsed
+
+On load, ForgeAI reads the model header and extracts:
+
+- **Architecture** (e.g., LlamaForCausalLM, MistralForCausalLM)
+- **Layer count** and context length
+- **Embedding dimensions**
+- **Parameter count** (computed from tensor shapes)
+- **Quantization type** (GGUF only)
+- **Tensor map** — names, dtypes, and shapes of all tensors
+- **Raw metadata** — all key-value pairs from the model header
+
+For folder-based models, it additionally detects:
+- Number of shards
+- Presence of `config.json`
+- Presence of tokenizer files
+
+## Hero Panel
+
+| Field | Values |
+|-------|--------|
+| STATUS | IDLE, LOADING, LOADED, ERROR |
+| FORMAT | GGUF or SAFETENSORS |
+| SIZE | File size on disk |
+| PARAMS | Parameter count |
+| TENSORS | Total tensor count |
+| QUANT | Quantization type |
+
+## Metadata Grid
+
+After loading, a grid displays architecture, layers, context length, embedding dimension, quantization, tensors, parameters, and file size.
+
+## Tensor Map Preview
+
+A table showing tensor names, dtypes, and shapes. For large models the preview is capped with a count of remaining tensors.
+
+## Raw Metadata
+
+A scrollable list of the first 20 metadata key-value pairs from the model header.
+
+## Workflow
+
+<Steps>
+  <Step title="Click a load button">
+    Choose **LOAD GGUF FILE**, **LOAD SAFETENSORS FILE**, or **LOAD MODEL FOLDER**
+  </Step>
+  <Step title="Select file or folder">
+    Pick your model in the system dialog
+  </Step>
+  <Step title="Review metadata">
+    Header parsing takes under 1 second. Review model metadata, tensor map, and raw metadata.
+  </Step>
+  <Step title="Use the model">
+    The model is now available in Inspect, Optimize, Test, and other modules. Click **UNLOAD** to clear it.
+  </Step>
+</Steps>

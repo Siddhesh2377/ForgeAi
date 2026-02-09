@@ -1,0 +1,87 @@
+---
+title: "Inspect"
+description: "Deep analysis of model architecture, memory layout, tensor composition, and runtime compatibility"
+icon: "microscope"
+---
+
+# Inspect (02)
+
+Inspect provides deep analysis of a loaded model — memory breakdown, quantization distribution, runtime compatibility, and an isometric 3D visualization.
+
+<Note>
+  A model must be loaded via the Load module before Inspect is available.
+</Note>
+
+## Isometric Visualization
+
+An interactive 3D isometric view renders the model as stacked blocks:
+
+- **Embedding layer** at the bottom
+- **Transformer layers** stacked vertically, colored by attention/MLP tensor ratio
+- **Output layer** at the top
+
+| Control | Action |
+|---------|--------|
+| Hover | Tooltip with tensor breakdown |
+| `+` / `-` buttons | Zoom in / out |
+| Mouse wheel | Zoom |
+| Reset button | Reset view |
+
+## Memory Distribution
+
+Horizontal bar chart showing memory by component:
+
+| Component | Description |
+|-----------|-------------|
+| Embeddings | Token embedding weights |
+| Attention | Q, K, V, O projection matrices |
+| MLP | Gate, up, down projection matrices |
+| Norms | Layer normalization weights |
+| Output | LM head / output projection |
+
+Each component shows bytes, percentage, and a proportional bar.
+
+## Quantization Breakdown
+
+For each dtype present (F32, F16, BF16, Q8\_0, Q4\_K\_M, etc.):
+- Tensor count, total size, percentage, and visual bar
+
+## Attention Architecture
+
+- Query heads and KV heads count
+- Head dimension and GQA ratio
+- Visual head diagram
+
+## Tokenizer Info
+
+- Tokenizer type (BPE, Unigram, WordPiece)
+- Vocabulary size
+- Special tokens (BOS, EOS, PAD, UNK) with IDs
+
+## Runtime Compatibility
+
+| Runtime | Formats |
+|---------|---------|
+| llama.cpp | GGUF |
+| Ollama | GGUF |
+| LM Studio | GGUF |
+| KoboldCpp | GGUF |
+| vLLM | SafeTensors |
+| HF Transformers | SafeTensors |
+| ExLlamaV2 | SafeTensors |
+| MLX | SafeTensors |
+
+Status: COMPATIBLE, PARTIAL, or NOT SUPPORTED.
+
+## File Verification
+
+Click **COMPUTE HASH** to calculate SHA-256 fingerprint for integrity verification.
+
+## Data Export
+
+- **JSON** — Full model metadata
+- **CSV** — Tensor list with names, dtypes, shapes
+
+## Layer Hierarchy
+
+Expandable list per layer showing attention, MLP, norm, and other tensors. Filter by name, dtype, or layer range.

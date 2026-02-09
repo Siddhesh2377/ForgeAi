@@ -1,0 +1,876 @@
+<script lang="ts">
+  import { invoke } from "@tauri-apps/api/core";
+  import { theme, type ThemeMode, type LayoutMode } from "$lib/theme.svelte";
+
+  interface GpuInfo {
+    has_nvidia: boolean;
+    nvidia_name: string | null;
+    nvidia_vram: string | null;
+    cuda_version: string | null;
+    has_vulkan: boolean;
+    has_metal: boolean;
+    recommended_variant: string;
+    os: string;
+    arch: string;
+  }
+
+  interface ToolsStatus {
+    installed: boolean;
+    version: string | null;
+    variant: string | null;
+    path: string | null;
+  }
+
+  const modes: { id: ThemeMode; label: string }[] = [
+    { id: "dark", label: "DARK" },
+    { id: "light", label: "LIGHT" },
+  ];
+
+  const layouts: { id: LayoutMode; label: string; desc: string }[] = [
+    { id: "stretched", label: "STRETCHED", desc: "Full width content" },
+    { id: "centered", label: "CENTERED", desc: "Constrained width" },
+  ];
+
+  const VARIANTS = [
+    { id: "cpu", label: "CPU", desc: "Universal, no GPU acceleration" },
+    { id: "cuda", label: "CUDA", desc: "NVIDIA GPU acceleration" },
+    { id: "vulkan", label: "VULKAN", desc: "Cross-platform GPU (AMD/NVIDIA/Intel)" },
+  ];
+
+  // ── GPU & Tools State ────────────────────────────
+  let gpu = $state<GpuInfo | null>(null);
+  let gpuLoading = $state(true);
+  let tools = $state<ToolsStatus | null>(null);
+  let toolsLoading = $state(true);
+
+  let selectedVariant = $state("cpu");
+  let downloading = $state(false);
+  let downloadError = $state<string | null>(null);
+  let removing = $state(false);
+
+  async function loadGpuInfo() {
+    try {
+      gpu = await invoke<GpuInfo>("detect_gpu");
+      selectedVariant = gpu.recommended_variant;
+    } catch (e) {
+      console.error("GPU detection failed:", e);
+    } finally {
+      gpuLoading = false;
+    }
+  }
+
+  async function loadToolsStatus() {
+    try {
+      tools = await invoke<ToolsStatus>("get_tools_status");
+    } catch (e) {
+      console.error("Tools status check failed:", e);
+    } finally {
+      toolsLoading = false;
+    }
+  }
+
+  async function handleDownload() {
+    downloading = true;
+    downloadError = null;
+    try {
+      await invoke("download_llama_cpp", { variant: selectedVariant });
+      await loadToolsStatus();
+    } catch (e) {
+      downloadError = String(e);
+    } finally {
+      downloading = false;
+    }
+  }
+
+  async function handleRemove() {
+    removing = true;
+    try {
+      await invoke("remove_tools");
+      await loadToolsStatus();
+    } catch (e) {
+      console.error("Remove failed:", e);
+    } finally {
+      removing = false;
+    }
+  }
+
+  $effect(() => {
+    loadGpuInfo();
+    loadToolsStatus();
+  });
+</script>
+
+<div class="settings fade-in">
+  <!-- ── Header ──────────────────────────────────── -->
+  <div class="settings-header panel">
+    <div class="settings-header-top">
+      <span class="label-xs">FRG.07</span>
+      <span class="label-xs" style="color: var(--text-muted);">CONFIGURATION</span>
+    </div>
+    <h1 class="settings-title">SETTINGS</h1>
+    <p class="settings-desc">Appearance &amp; tools configuration</p>
+  </div>
+
+  <!-- ── Mode Toggle ─────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">MODE</span>
+    </div>
+
+    <div class="mode-grid">
+      {#each modes as mode}
+        <button
+          class="mode-card"
+          class:mode-active={theme.mode === mode.id}
+          onclick={() => theme.setMode(mode.id)}
+        >
+          <div class="mode-preview" class:mode-preview-light={mode.id === "light"}>
+            <div class="mode-preview-bar"></div>
+            <div class="mode-preview-body">
+              <div class="mode-preview-sidebar"></div>
+              <div class="mode-preview-content">
+                <div class="mode-preview-line"></div>
+                <div class="mode-preview-line short"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mode-info">
+            <span class="mode-name">{mode.label}</span>
+            {#if theme.mode === mode.id}
+              <span class="dot dot-active"></span>
+            {/if}
+          </div>
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <!-- ── Layout Toggle ──────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">LAYOUT</span>
+    </div>
+
+    <div class="mode-grid">
+      {#each layouts as lay}
+        <button
+          class="mode-card"
+          class:mode-active={theme.layout === lay.id}
+          onclick={() => theme.setLayout(lay.id)}
+        >
+          <div class="layout-preview" class:layout-preview-stretched={lay.id === "stretched"}>
+            <div class="layout-preview-bar"></div>
+            <div class="layout-preview-body">
+              <div class="layout-preview-sidebar"></div>
+              <div class="layout-preview-content">
+                <div class="layout-preview-block"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mode-info">
+            <span class="mode-name">{lay.label}</span>
+            {#if theme.layout === lay.id}
+              <span class="dot dot-active"></span>
+            {/if}
+          </div>
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <!-- ── GPU Detection ─────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">GPU DETECTION</span>
+    </div>
+
+    <div class="tools-panel panel-flat">
+      {#if gpuLoading}
+        <div class="tools-row">
+          <span class="label-xs" style="color: var(--info); animation: pulse 1.2s ease infinite;">SCANNING HARDWARE...</span>
+        </div>
+      {:else if gpu}
+        <div class="gpu-grid">
+          <div class="gpu-cell">
+            <span class="label-xs">PLATFORM</span>
+            <span class="code">{gpu.os.toUpperCase()} / {gpu.arch.toUpperCase()}</span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">NVIDIA</span>
+            {#if gpu.has_nvidia}
+              <span class="code" style="color: var(--success);">{gpu.nvidia_name ?? "DETECTED"}</span>
+            {:else}
+              <span class="code" style="color: var(--text-muted);">NOT FOUND</span>
+            {/if}
+          </div>
+          {#if gpu.has_nvidia}
+            <div class="gpu-cell">
+              <span class="label-xs">VRAM</span>
+              <span class="code">{gpu.nvidia_vram ?? "---"}</span>
+            </div>
+            <div class="gpu-cell">
+              <span class="label-xs">CUDA</span>
+              <span class="code">{gpu.cuda_version ?? "---"}</span>
+            </div>
+          {/if}
+          <div class="gpu-cell">
+            <span class="label-xs">VULKAN</span>
+            <span class="code" style="color: {gpu.has_vulkan ? 'var(--success)' : 'var(--text-muted)'};">
+              {gpu.has_vulkan ? "AVAILABLE" : "NOT FOUND"}
+            </span>
+          </div>
+          {#if gpu.has_metal}
+            <div class="gpu-cell">
+              <span class="label-xs">METAL</span>
+              <span class="code" style="color: var(--success);">AVAILABLE</span>
+            </div>
+          {/if}
+          <div class="gpu-cell">
+            <span class="label-xs">RECOMMENDED</span>
+            <span class="code" style="color: var(--accent);">{gpu.recommended_variant.toUpperCase()}</span>
+          </div>
+        </div>
+      {:else}
+        <div class="tools-row">
+          <span class="label-xs" style="color: var(--text-muted);">GPU DETECTION UNAVAILABLE</span>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <!-- ── llama.cpp Tools ───────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">LLAMA.CPP TOOLS</span>
+    </div>
+
+    <div class="tools-panel panel">
+      {#if toolsLoading}
+        <div class="tools-row">
+          <span class="label-xs" style="color: var(--info); animation: pulse 1.2s ease infinite;">CHECKING...</span>
+        </div>
+      {:else if tools?.installed}
+        <!-- Installed state -->
+        <div class="tools-status-row">
+          <span class="dot dot-success"></span>
+          <span class="heading-sm" style="color: var(--success);">INSTALLED</span>
+        </div>
+        <div class="gpu-grid" style="margin-top: 8px;">
+          {#if tools.version}
+            <div class="gpu-cell">
+              <span class="label-xs">VERSION</span>
+              <span class="code">{tools.version}</span>
+            </div>
+          {/if}
+          {#if tools.variant}
+            <div class="gpu-cell">
+              <span class="label-xs">BUILD</span>
+              <span class="code">{tools.variant.toUpperCase()}</span>
+            </div>
+          {/if}
+          {#if tools.path}
+            <div class="gpu-cell" style="grid-column: 1 / -1;">
+              <span class="label-xs">PATH</span>
+              <span class="code" style="font-size: 9px; word-break: break-all; color: var(--text-muted);">{tools.path}</span>
+            </div>
+          {/if}
+        </div>
+        <div class="tools-actions" style="margin-top: 12px;">
+          <button class="btn btn-accent" onclick={handleDownload} disabled={downloading}>
+            {downloading ? "REINSTALLING..." : "REINSTALL"}
+          </button>
+          <button class="btn btn-danger" onclick={handleRemove} disabled={removing}>
+            {removing ? "REMOVING..." : "REMOVE"}
+          </button>
+        </div>
+      {:else}
+        <!-- Not installed state -->
+        <div class="tools-status-row">
+          <span class="dot dot-paused"></span>
+          <span class="heading-sm" style="color: var(--text-muted);">NOT INSTALLED</span>
+        </div>
+        <p class="tools-desc">
+          Download llama.cpp tools for model quantization. The correct build
+          for your platform will be fetched from the latest GitHub release.
+        </p>
+
+        <!-- Variant selector -->
+        <div class="variant-grid">
+          {#each VARIANTS as v}
+            <button
+              class="variant-card"
+              class:variant-active={selectedVariant === v.id}
+              onclick={() => selectedVariant = v.id}
+            >
+              <div class="variant-header">
+                <span class="variant-name">{v.label}</span>
+                {#if selectedVariant === v.id}
+                  <span class="dot dot-active" style="margin-left: auto;"></span>
+                {/if}
+                {#if gpu?.recommended_variant === v.id}
+                  <span class="badge badge-accent" style="margin-left: auto;">REC</span>
+                {/if}
+              </div>
+              <span class="variant-desc">{v.desc}</span>
+              {#if v.id === "cuda" && gpu?.os !== "windows"}
+                <span class="variant-note">No prebuilt CUDA release — Vulkan build will be used</span>
+              {/if}
+            </button>
+          {/each}
+        </div>
+
+        <div class="tools-actions">
+          <button class="btn btn-accent" onclick={handleDownload} disabled={downloading}>
+            {#if downloading}
+              <span style="animation: pulse 1.2s ease infinite;">DOWNLOADING...</span>
+            {:else}
+              DOWNLOAD &amp; INSTALL
+            {/if}
+          </button>
+        </div>
+
+        {#if downloadError}
+          <div class="tools-error panel-flat" style="border-color: var(--danger);">
+            <span class="dot dot-danger"></span>
+            <span class="danger-text" style="flex: 1;">{downloadError}</span>
+          </div>
+        {/if}
+      {/if}
+    </div>
+  </div>
+
+  <!-- ── Color Semantics ─────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">COLOR SEMANTICS</span>
+    </div>
+
+    <div class="semantics-grid">
+      <div class="semantic-card panel-flat">
+        <div class="semantic-dot" style="background: var(--accent);"></div>
+        <div class="semantic-info">
+          <span class="semantic-name">AMBER</span>
+          <span class="semantic-role">Idle / Default</span>
+        </div>
+      </div>
+      <div class="semantic-card panel-flat">
+        <div class="semantic-dot" style="background: var(--info);"></div>
+        <div class="semantic-info">
+          <span class="semantic-name">BLUE</span>
+          <span class="semantic-role">Working / Processing</span>
+        </div>
+      </div>
+      <div class="semantic-card panel-flat">
+        <div class="semantic-dot" style="background: var(--success);"></div>
+        <div class="semantic-info">
+          <span class="semantic-name">GREEN</span>
+          <span class="semantic-role">Success / Complete</span>
+        </div>
+      </div>
+      <div class="semantic-card panel-flat">
+        <div class="semantic-dot" style="background: var(--danger);"></div>
+        <div class="semantic-info">
+          <span class="semantic-name">RED</span>
+          <span class="semantic-role">Danger / Error</span>
+        </div>
+      </div>
+      <div class="semantic-card panel-flat">
+        <div class="semantic-dot" style="background: var(--gray);"></div>
+        <div class="semantic-info">
+          <span class="semantic-name">GRAY</span>
+          <span class="semantic-role">Paused / Inactive</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Live Preview ────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">PREVIEW</span>
+    </div>
+
+    <div class="preview panel">
+      <div class="preview-header">
+        <span class="label-xs">LIVE PREVIEW</span>
+        <span class="badge badge-accent">
+          <span class="dot dot-active"></span>
+          AMBER
+        </span>
+      </div>
+
+      <div class="preview-body">
+        <div class="preview-row">
+          <span class="heading-sm" style="color: var(--accent);">ACCENT TEXT</span>
+          <span class="label" style="color: var(--text-primary);">Primary text</span>
+          <span class="label" style="color: var(--text-secondary);">Secondary</span>
+          <span class="label" style="color: var(--text-muted);">Muted</span>
+        </div>
+
+        <div class="preview-row">
+          <button class="btn btn-accent">ACTION</button>
+          <button class="btn">DEFAULT</button>
+          <span class="badge badge-accent">
+            <span class="dot dot-active"></span>
+            BADGE
+          </span>
+          <span class="badge badge-dim">INACTIVE</span>
+        </div>
+
+        <div class="preview-row">
+          <span class="badge badge-info"><span class="dot dot-working"></span> WORKING</span>
+          <span class="badge badge-success"><span class="dot dot-success"></span> SUCCESS</span>
+          <span class="badge badge-danger"><span class="dot dot-danger"></span> ERROR</span>
+          <span class="badge badge-dim"><span class="dot dot-paused"></span> PAUSED</span>
+        </div>
+
+        <div class="preview-bar-row">
+          <div class="preview-bar" style="background: var(--accent); width: 40%;"></div>
+          <div class="preview-bar" style="background: var(--info); width: 25%;"></div>
+          <div class="preview-bar" style="background: var(--success); width: 20%;"></div>
+          <div class="preview-bar" style="background: var(--danger); width: 10%;"></div>
+          <div class="preview-bar" style="background: var(--gray); width: 5%;"></div>
+        </div>
+      </div>
+
+      <div class="preview-footer">
+        <div class="barcode" style="max-width: 140px;"></div>
+        <span class="label-xs">
+          {theme.mode.toUpperCase()} / AMBER / #F59E0B
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .settings {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  /* ── Header ────────────────────────────────────── */
+  .settings-header {
+    padding: 16px;
+  }
+
+  .settings-header-top {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .settings-title {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    line-height: 1;
+    color: var(--text-primary);
+  }
+
+  .settings-desc {
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.06em;
+    margin-top: 6px;
+    text-transform: uppercase;
+  }
+
+  /* ── Section ───────────────────────────────────── */
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-label {
+    padding: 0;
+  }
+
+  /* ── Mode Grid ─────────────────────────────────── */
+  .mode-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .mode-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition:
+      border-color var(--theme-transition),
+      background-color var(--theme-transition);
+    font-family: var(--font-mono);
+  }
+
+  .mode-card:hover {
+    border-color: var(--border-strong);
+  }
+
+  .mode-active {
+    border-color: var(--accent);
+  }
+
+  .mode-active:hover {
+    border-color: var(--accent);
+  }
+
+  /* Mini app preview */
+  .mode-preview {
+    height: 64px;
+    background: #0b0b0b;
+    border: 1px solid #2a2a2a;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background-color var(--theme-transition);
+  }
+
+  .mode-preview-light {
+    background: #edecea;
+    border-color: #c8c8c0;
+  }
+
+  .mode-preview-bar {
+    height: 8px;
+    background: #181818;
+    border-bottom: 1px solid #2a2a2a;
+  }
+
+  .mode-preview-light .mode-preview-bar {
+    background: #f5f5f2;
+    border-color: #c8c8c0;
+  }
+
+  .mode-preview-body {
+    display: flex;
+    flex: 1;
+  }
+
+  .mode-preview-sidebar {
+    width: 24px;
+    background: #111111;
+    border-right: 1px solid #2a2a2a;
+  }
+
+  .mode-preview-light .mode-preview-sidebar {
+    background: #f5f5f2;
+    border-color: #c8c8c0;
+  }
+
+  .mode-preview-content {
+    flex: 1;
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .mode-preview-line {
+    height: 3px;
+    background: #2a2a2a;
+    width: 80%;
+  }
+
+  .mode-preview-light .mode-preview-line {
+    background: #c8c8c0;
+  }
+
+  .mode-preview-line.short {
+    width: 50%;
+  }
+
+  .mode-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mode-name {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    transition: color var(--theme-transition);
+  }
+
+  .mode-active .mode-name {
+    color: var(--accent);
+  }
+
+  /* ── Layout Preview ─────────────────────────────── */
+  .layout-preview {
+    height: 64px;
+    background: #0b0b0b;
+    border: 1px solid #2a2a2a;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .layout-preview-bar {
+    height: 8px;
+    background: #181818;
+    border-bottom: 1px solid #2a2a2a;
+  }
+
+  .layout-preview-body {
+    display: flex;
+    flex: 1;
+  }
+
+  .layout-preview-sidebar {
+    width: 24px;
+    background: #111111;
+    border-right: 1px solid #2a2a2a;
+  }
+
+  .layout-preview-content {
+    flex: 1;
+    padding: 8px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .layout-preview-block {
+    height: 100%;
+    width: 60%;
+    background: #2a2a2a;
+  }
+
+  .layout-preview-stretched .layout-preview-block {
+    width: 90%;
+  }
+
+  :global([data-theme="light"]) .layout-preview {
+    background: #edecea;
+    border-color: #c8c8c0;
+  }
+
+  :global([data-theme="light"]) .layout-preview-bar {
+    background: #f5f5f2;
+    border-color: #c8c8c0;
+  }
+
+  :global([data-theme="light"]) .layout-preview-sidebar {
+    background: #f5f5f2;
+    border-color: #c8c8c0;
+  }
+
+  :global([data-theme="light"]) .layout-preview-block {
+    background: #c8c8c0;
+  }
+
+  /* ── GPU & Tools ─────────────────────────────────── */
+  .tools-panel {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .tools-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tools-status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .tools-desc {
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.6;
+    margin: 4px 0;
+  }
+
+  .tools-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .tools-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+    margin-top: 4px;
+  }
+
+  .gpu-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1px;
+    background: var(--border-dim);
+  }
+
+  .gpu-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 8px;
+    background: var(--bg-surface);
+  }
+
+  /* ── Variant Selector ────────────────────────────── */
+  .variant-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 4px 0;
+  }
+
+  .variant-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px;
+    background: var(--bg-inset);
+    border: 1px solid var(--border-dim);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    text-align: left;
+    transition: all 120ms ease;
+  }
+
+  .variant-card:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-hover);
+  }
+
+  .variant-active {
+    border-color: var(--accent) !important;
+    background: var(--accent-bg) !important;
+  }
+
+  .variant-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .variant-name {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--text-primary);
+  }
+
+  .variant-desc {
+    font-size: 8px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .variant-note {
+    font-size: 7px;
+    color: var(--info);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* ── Color Semantics ────────────────────────────── */
+  .semantics-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+
+  .semantic-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 8px;
+    text-align: center;
+  }
+
+  .semantic-dot {
+    width: 16px;
+    height: 16px;
+    transition: background-color var(--theme-transition);
+  }
+
+  .semantic-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .semantic-name {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+  }
+
+  .semantic-role {
+    font-size: 8px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+  }
+
+  /* ── Preview ───────────────────────────────────── */
+  .preview {
+    padding: 16px;
+  }
+
+  .preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .preview-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .preview-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .preview-bar-row {
+    display: flex;
+    gap: 2px;
+    height: 6px;
+  }
+
+  .preview-bar {
+    height: 100%;
+    transition: background-color var(--theme-transition);
+  }
+
+  .preview-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-dim);
+  }
+</style>

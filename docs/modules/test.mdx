@@ -1,0 +1,79 @@
+---
+title: "Test"
+description: "Run inference on loaded models with real-time token streaming and performance stats"
+icon: "play"
+---
+
+# Test (09)
+
+Run text generation on GGUF or SafeTensors models with real-time token streaming.
+
+## Model Selection
+
+<CardGroup cols={2}>
+  <Card title="Manual Path" icon="keyboard">
+    Type or paste a file/folder path
+  </Card>
+  <Card title="Browse" icon="folder-open">
+    Click FILE or FOLDER to open system dialog
+  </Card>
+  <Card title="Use Loaded" icon="circle-check">
+    Quick button for the currently loaded model
+  </Card>
+  <Card title="Local Library" icon="bookmark">
+    Click a chip from your downloaded models
+  </Card>
+</CardGroup>
+
+<Warning>
+  For SafeTensors models, use the **folder path** (containing config.json and tokenizer), not an individual `.safetensors` file.
+</Warning>
+
+## Inference Engines
+
+| Format | Engine | Device |
+|--------|--------|--------|
+| GGUF | llama.cpp (`llama-cli`) | CPU or GPU |
+| SafeTensors | HuggingFace Transformers | GPU (CUDA) → CPU fallback |
+
+## Generation Settings
+
+| Parameter | Range | Default | Description |
+|-----------|:-----:|:-------:|-------------|
+| Max Tokens | 16–2048 | 256 | Maximum tokens to generate |
+| Temperature | 0–2 | 0.7 | Randomness. 0 = deterministic, higher = more creative |
+
+## Output
+
+Tokens stream into the output panel in real time with a blinking cursor.
+
+After completion, a stats bar shows:
+
+| Stat | Description |
+|------|-------------|
+| TOKENS | Number of tokens generated |
+| TIME | Total generation time |
+| SPEED | Tokens per second |
+| DEVICE | CPU or CUDA |
+
+## Workflow
+
+<Steps>
+  <Step title="Select model">
+    Use any of the four selection methods above
+  </Step>
+  <Step title="Enter prompt">
+    Type your prompt in the text area
+  </Step>
+  <Step title="Configure">
+    Adjust Max Tokens and Temperature sliders if needed
+  </Step>
+  <Step title="Generate">
+    Click **GENERATE** and watch real-time output
+  </Step>
+</Steps>
+
+## GPU Acceleration
+
+- **GGUF**: Uses GPU if llama.cpp was installed with CUDA or Vulkan variant
+- **SafeTensors**: Tries CUDA GPU first; falls back to CPU if out of memory

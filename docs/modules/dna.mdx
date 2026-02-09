@@ -1,0 +1,110 @@
+---
+title: "M-DNA Forge"
+description: "Merge 2–5 parent models into hybrid offspring using SLERP, TIES, DARE, Frankenmerge, and more"
+icon: "dna"
+---
+
+# M-DNA Forge (08)
+
+M-DNA Forge is ForgeAI's model merging system. Load multiple parent models, choose a merge strategy, configure layer assignments, and build a hybrid offspring.
+
+## Concepts
+
+| Term | Meaning |
+|------|---------|
+| **Parent** | A source model contributing weights (2–5 supported) |
+| **Offspring** | The resulting merged model |
+| **Base model** | A reference model required by some methods (TIES, DARE, Task Arithmetic) |
+| **Layer assignment** | Which parent provides which layer in the offspring (Frankenmerge/Passthrough) |
+
+## Merge Methods
+
+| Method | Min Parents | Requires Base | Difficulty | Description |
+|--------|:----------:|:-------------:|:----------:|-------------|
+| SLERP | 2 | No | Easy | Spherical interpolation between two models |
+| Average | 2 | No | Easy | Weighted mean of all tensors |
+| Passthrough | 2 | No | Easy | Stack layers from parents sequentially |
+| Frankenmerge | 2 | No | Intermediate | Pick specific layers from specific parents |
+| Task Arithmetic | 2 | Yes | Intermediate | Add task vectors for multi-task models |
+| TIES | 2 | Yes | Advanced | Trim, elect sign, merge — resolves interference |
+| DARE | 2 | Yes | Advanced | Drop and rescale delta parameters |
+| DeLLa | 2 | Yes | Advanced | Density-based layer-level adaptive merging |
+
+## Difficulty Modes
+
+| Mode | Available Methods |
+|------|------------------|
+| Easy | SLERP, Average, Passthrough |
+| Intermediate | + Frankenmerge, Task Arithmetic |
+| Advanced | All methods |
+
+## Layout
+
+Two-column layout:
+
+- **Left**: Isometric 3D visualization — parent towers + offspring tower, color-coded by parent assignment
+- **Right**: Tabbed panel with three tabs
+
+### Files Tab
+
+- Parent model cards with name, params, layers, format, size
+- **+ LOAD FILE** / **+ LOAD FOLDER** to add parents
+- **SET BASE** button (for methods requiring a base)
+- Compatibility report and composition bar
+
+### Layers Tab
+
+- **AUTO: SPLIT** — Alternating parent assignment (A, B, A, B...)
+- **AUTO: INTERLEAVE** — Equal chunk assignment
+- Per-layer list: click to cycle assigned parent
+- **COMPUTE LAYERS** for specialization analysis (Syntactic/Semantic/Reasoning badges)
+
+### Settings Tab
+
+- Mode selector (Easy / Intermediate / Advanced)
+- Method grid filtered by mode
+- Method-specific parameter sliders (t, scaling, density, trim)
+- Output: format (SafeTensors/GGUF), model name, output path
+
+## Compatibility Checking
+
+With 2+ parents loaded, ForgeAI checks:
+- Architecture match
+- Hidden dimension match
+- Layer count match
+- Shared tensor count
+
+## Output Formats
+
+| Format | Output |
+|--------|--------|
+| **SafeTensors** | Directory with `model.safetensors` + tokenizer/config files |
+| **GGUF** | Single `.gguf` file with embedded metadata and tokenizer |
+
+## Workflow
+
+<Steps>
+  <Step title="Load parents">
+    Add 2+ models via the Files tab
+  </Step>
+  <Step title="Check compatibility">
+    Review the compatibility report
+  </Step>
+  <Step title="Configure">
+    Select mode, method, and tune parameters in the Settings tab
+  </Step>
+  <Step title="Assign layers">
+    For Frankenmerge: set layer assignments in the Layers tab (or use AUTO)
+  </Step>
+  <Step title="Build">
+    Click **BUILD MERGE**, monitor progress, view result
+  </Step>
+</Steps>
+
+<Tip>
+  **Best practices:**
+  - 2 similar models → **SLERP** with t=0.5
+  - Base + finetune → **TIES** or **DARE**
+  - Cherry-pick layers → **Frankenmerge** with manual assignments
+  - Avoid **AVERAGE** on dissimilar models (produces incoherent output)
+</Tip>

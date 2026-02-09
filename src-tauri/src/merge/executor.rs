@@ -1,0 +1,378 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use candle_core::{DType, Device, Tensor};
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter};
+
+use crate::model::error::ModelError;
+
+use super::config::{MergeConfig, OutputFormat};
+use super::methods;
+use super::output;
+use super::planner::{TensorMergePlan, TensorOperation};
+use super::registry::ParentRegistry;
+use super::tensor_io;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeProgress {
+    pub stage: String,
+    pub percent: f64,
+    pub message: String,
+    pub current_tensor: Option<String>,
+    pub tensors_done: usize,
+    pub tensors_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergePhase {
+    pub phase: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MergeResult {
+    pub output_path: String,
+    pub output_size: u64,
+    pub output_size_display: String,
+    pub tensors_written: usize,
+    pub method: String,
+    pub copied_files: Vec<String>,
+}
+
+fn emit_progress(app: &AppHandle, progress: &MergeProgress) {
+    let _ = app.emit("merge:progress", progress);
+}
+
+fn emit_phase(app: &AppHandle, phase: &str, detail: &str) {
+    let _ = app.emit("merge:phase", MergePhase {
+        phase: phase.to_string(),
+        detail: detail.to_string(),
+    });
+}
+
+pub fn execute_merge(
+    app: &AppHandle,
+    config: &MergeConfig,
+    plan: &TensorMergePlan,
+    registry: &ParentRegistry,
+    cancel: Arc<AtomicBool>,
+) -> Result<MergeResult, ModelError> {
+    let strategy = methods::get_strategy(config.method);
+    let total_ops = plan.operations.iter().filter(|op| !matches!(op, TensorOperation::CopyMetadata { .. })).count();
+    let mut tensors_done = 0;
+
+    // Phase 1: Validating
+    emit_phase(app, "validating", "Checking compatibility");
+    emit_progress(app, &MergeProgress {
+        stage: "validating".into(),
+        percent: 2.0,
+        message: "Validating merge configuration...".into(),
+        current_tensor: None,
+        tensors_done: 0,
+        tensors_total: total_ops,
+    });
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err(ModelError::MergeCancelled);
+    }
+
+    // Phase 2: Planning
+    emit_phase(app, "planning", "Building merge plan");
+    emit_progress(app, &MergeProgress {
+        stage: "planning".into(),
+        percent: 7.0,
+        message: format!("Plan: {} tensor operations", total_ops),
+        current_tensor: None,
+        tensors_done: 0,
+        tensors_total: total_ops,
+    });
+
+    // Determine base parent tensor loading function
+    let base_parent = config.base_parent_id.as_ref().and_then(|id| registry.get(id));
+
+    // Phase 3: Merging
+    emit_phase(app, "merging", "Processing tensors");
+    let mut merged_tensors: Vec<(String, Tensor)> = Vec::new();
+
+    for op in &plan.operations {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(ModelError::MergeCancelled);
+        }
+
+        match op {
+            TensorOperation::Copy { tensor_name, parent_id } => {
+                let parent = registry.get(parent_id).ok_or_else(|| {
+                    ModelError::ParentNotFound(parent_id.clone())
+                })?;
+
+                emit_progress(app, &MergeProgress {
+                    stage: "merging".into(),
+                    percent: 10.0 + (tensors_done as f64 / total_ops as f64) * 80.0,
+                    message: format!("Copying {}", tensor_name),
+                    current_tensor: Some(tensor_name.clone()),
+                    tensors_done,
+                    tensors_total: total_ops,
+                });
+
+                let tensor = tensor_io::load_tensor(parent, tensor_name)?;
+                merged_tensors.push((tensor_name.clone(), tensor));
+                tensors_done += 1;
+            }
+
+            TensorOperation::Merge { tensor_name, parent_ids, weights } => {
+                emit_progress(app, &MergeProgress {
+                    stage: "merging".into(),
+                    percent: 10.0 + (tensors_done as f64 / total_ops as f64) * 80.0,
+                    message: format!("Merging {} ({} parents)", tensor_name, parent_ids.len()),
+                    current_tensor: Some(tensor_name.clone()),
+                    tensors_done,
+                    tensors_total: total_ops,
+                });
+
+                // Load tensors from all parents
+                let mut parent_tensors: Vec<(Tensor, f64)> = Vec::new();
+                for (pid, weight) in parent_ids.iter().zip(weights.iter()) {
+                    let parent = registry.get(pid).ok_or_else(|| {
+                        ModelError::ParentNotFound(pid.clone())
+                    })?;
+                    let tensor = tensor_io::load_tensor(parent, tensor_name)?;
+                    parent_tensors.push((tensor, *weight));
+                }
+
+                // Load base tensor if needed
+                let base_tensor = if strategy.requires_base() {
+                    if let Some(bp) = base_parent {
+                        Some(tensor_io::load_tensor(bp, tensor_name)?)
+                    } else if !parent_tensors.is_empty() {
+                        Some(parent_tensors[0].0.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let merged = strategy.merge(
+                    &parent_tensors,
+                    &config.params,
+                    base_tensor.as_ref(),
+                )?;
+
+                merged_tensors.push((tensor_name.clone(), merged));
+                tensors_done += 1;
+            }
+
+            TensorOperation::Synthesize { tensor_name, shape, strategy: synth_strategy } => {
+                emit_progress(app, &MergeProgress {
+                    stage: "merging".into(),
+                    percent: 10.0 + (tensors_done as f64 / total_ops as f64) * 80.0,
+                    message: format!("Synthesizing {}", tensor_name),
+                    current_tensor: Some(tensor_name.clone()),
+                    tensors_done,
+                    tensors_total: total_ops,
+                });
+
+                let tensor = match synth_strategy.as_str() {
+                    "random_init" => {
+                        let num_elements: usize = shape.iter().product();
+                        let data: Vec<f32> = (0..num_elements)
+                            .map(|_| rand::random::<f32>() * 0.02 - 0.01)
+                            .collect();
+                        Tensor::from_vec(data, shape.as_slice(), &Device::Cpu)
+                            .map_err(|e| ModelError::CandleError(e.to_string()))?
+                    }
+                    _ => {
+                        Tensor::zeros(shape.as_slice(), DType::F32, &Device::Cpu)
+                            .map_err(|e| ModelError::CandleError(e.to_string()))?
+                    }
+                };
+
+                merged_tensors.push((tensor_name.clone(), tensor));
+                tensors_done += 1;
+            }
+
+            TensorOperation::CopyMetadata { .. } => {
+                // Metadata is handled by the output writer
+            }
+        }
+    }
+
+    if cancel.load(Ordering::Relaxed) {
+        return Err(ModelError::MergeCancelled);
+    }
+
+    // Phase 4: Writing output
+    emit_phase(app, "writing", "Writing output file");
+    emit_progress(app, &MergeProgress {
+        stage: "writing".into(),
+        percent: 91.0,
+        message: format!("Writing {} tensors to output...", merged_tensors.len()),
+        current_tensor: None,
+        tensors_done,
+        tensors_total: total_ops,
+    });
+
+    let output_path = &config.output.path;
+
+    // For GGUF output, resolve metadata parent up front
+    let metadata_parent = base_parent
+        .or_else(|| registry.all().first());
+
+    // Resolve the config.json directory from the metadata parent
+    let parent_config_dir = metadata_parent.map(|mp| {
+        if mp.is_dir {
+            mp.file_path.clone()
+        } else {
+            std::path::Path::new(&mp.file_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+        }
+    });
+
+    // Determine the actual file path written and the directory for aux files
+    let (actual_file_path, aux_target_dir) = match config.output.format {
+        OutputFormat::SafeTensors => {
+            // SafeTensors: output_path is a directory; write model.safetensors inside
+            let dir = std::path::Path::new(output_path);
+            std::fs::create_dir_all(dir).map_err(ModelError::IoError)?;
+            let model_file = dir.join("model.safetensors");
+            let file_str = model_file.to_string_lossy().to_string();
+            output::write_safetensors(&file_str, &merged_tensors)?;
+            (file_str, output_path.clone())
+        }
+        OutputFormat::Gguf => {
+            let mp = metadata_parent
+                .ok_or_else(|| ModelError::MergeError("No parent for metadata".into()))?;
+
+            // If source is GGUF, copy its raw metadata verbatim
+            let source_gguf = if matches!(mp.format, crate::model::ModelFormat::Gguf) {
+                Some(mp.file_path.as_str())
+            } else {
+                None
+            };
+
+            // For safetensors→GGUF: pass compat info + config.json directory
+            let cfg_dir = if source_gguf.is_none() {
+                parent_config_dir.as_deref()
+            } else {
+                None
+            };
+
+            output::write_gguf(
+                output_path,
+                &merged_tensors,
+                &config.output.model_name,
+                source_gguf,
+                Some(&mp.compat),
+                cfg_dir,
+            )?;
+
+            let aux_dir = std::path::Path::new(output_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            (output_path.clone(), aux_dir)
+        }
+    };
+
+    // Phase 4b: Copy auxiliary files (tokenizer, config, etc.)
+    emit_phase(app, "copying", "Copying tokenizer and config files");
+    let copied_files = copy_auxiliary_files(&aux_target_dir, registry, config.base_parent_id.as_deref());
+
+    // Phase 5: Verifying
+    emit_phase(app, "verifying", "Checking output integrity");
+    emit_progress(app, &MergeProgress {
+        stage: "verifying".into(),
+        percent: 97.0,
+        message: "Verifying output file...".into(),
+        current_tensor: None,
+        tensors_done: total_ops,
+        tensors_total: total_ops,
+    });
+
+    let output_file = std::fs::metadata(&actual_file_path).map_err(ModelError::IoError)?;
+    let output_size = output_file.len();
+
+    emit_progress(app, &MergeProgress {
+        stage: "complete".into(),
+        percent: 100.0,
+        message: format!("Merge complete: {}", crate::model::format_file_size(output_size)),
+        current_tensor: None,
+        tensors_done: total_ops,
+        tensors_total: total_ops,
+    });
+
+    Ok(MergeResult {
+        output_path: actual_file_path,
+        output_size,
+        output_size_display: crate::model::format_file_size(output_size),
+        tensors_written: merged_tensors.len(),
+        method: config.method.display_name().to_string(),
+        copied_files,
+    })
+}
+
+/// Files to copy from parent model directory to output directory.
+const AUXILIARY_FILES: &[&str] = &[
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "tokenizer.model",
+    "config.json",
+    "generation_config.json",
+    "special_tokens_map.json",
+    "vocab.json",
+    "merges.txt",
+    "added_tokens.json",
+    "preprocessor_config.json",
+];
+
+/// Copy tokenizer/config files from the best source parent directory to the output directory.
+fn copy_auxiliary_files(
+    output_dir_path: &str,
+    registry: &ParentRegistry,
+    base_parent_id: Option<&str>,
+) -> Vec<String> {
+    use std::path::Path;
+
+    let output_dir = Path::new(output_dir_path);
+    if !output_dir.exists() {
+        let _ = std::fs::create_dir_all(output_dir);
+    }
+
+    // Find source directory: prefer base parent, then first dir-based parent, then any parent
+    let source_dir = base_parent_id
+        .and_then(|id| registry.get(id))
+        .or_else(|| registry.all().iter().find(|p| p.is_dir))
+        .or_else(|| registry.all().first());
+
+    let source_parent = match source_dir {
+        Some(p) => p,
+        None => return vec![],
+    };
+
+    let source_path = Path::new(&source_parent.file_path);
+    let source_dir = if source_parent.is_dir {
+        source_path.to_path_buf()
+    } else {
+        match source_path.parent() {
+            Some(dir) => dir.to_path_buf(),
+            None => return vec![],
+        }
+    };
+
+    let mut copied = Vec::new();
+
+    for &filename in AUXILIARY_FILES {
+        let src = source_dir.join(filename);
+        let dst = output_dir.join(filename);
+        if src.exists() && !dst.exists() {
+            if let Ok(_) = std::fs::copy(&src, &dst) {
+                copied.push(filename.to_string());
+            }
+        }
+    }
+
+    copied
+}
