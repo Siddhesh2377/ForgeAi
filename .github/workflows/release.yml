@@ -5,6 +5,14 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -56,15 +64,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'ForgeAI ${{ github.ref_name }}'
+          tagName: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+          releaseName: 'ForgeAI ${{ github.event_name == ''push'' && github.ref_name || inputs.version }}'
           releaseBody: |
-            See the [CHANGELOG](https://github.com/siddhesh2377/ForgeAi) for details.
-
             ## Downloads
             | Platform | File |
             |----------|------|
-            | Linux | `.AppImage` / `.deb` |
+            | Linux | `.AppImage` / `.deb` / `.rpm` |
             | macOS (Apple Silicon) | `.dmg` (aarch64) |
             | macOS (Intel) | `.dmg` (x64) |
             | Windows | `.msi` / `.exe` |
