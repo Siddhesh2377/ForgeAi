@@ -1,218 +1,143 @@
 # ForgeAI
 
-A cross-platform desktop tool for loading, inspecting, optimizing, and exporting AI models — built for developers who run models locally.
+A local-first desktop tool for loading, inspecting, quantizing, merging, and testing AI models — entirely offline, entirely yours.
 
-> Android Studio, but for AI models.
+> Your local model workshop.
 
 ---
 
-## Problem
+## What It Does
 
-Running AI models locally means juggling CLI tools, manual quantization scripts, opaque file formats, and no easy way to compare before/after performance. There is no unified workbench for the local-AI workflow.
+| Module | Code | What |
+|--------|:----:|------|
+| **Load** | 01 | Import GGUF files, SafeTensors files, or sharded HuggingFace model folders |
+| **Inspect** | 02 | Memory breakdown, quantization distribution, isometric 3D architecture viz, runtime compatibility matrix, SHA-256 verification |
+| **Optimize** | 03 | Quantize GGUF models across 7 levels (Q2_K → Q8_0) with real-time size/quality preview |
+| **Hub** | 04 | Download models from HuggingFace, manage a local library |
+| **Convert** | 05 | SafeTensors → GGUF conversion with configurable output types (F16, BF16, F32, Q8_0) |
+| **M-DNA Forge** | 08 | Merge 2–5 models using SLERP, TIES, DARE, DeLLa, Frankenmerge, Task Arithmetic, Passthrough, or Average |
+| **Test** | 09 | Run inference with real-time token streaming — llama.cpp (GGUF) or HuggingFace Transformers (SafeTensors) |
+| **Settings** | 07 | Theme (dark/light), layout (stretched/centered), GPU detection, llama.cpp tools management |
 
-## Solution
+All offline. No cloud. No accounts. No telemetry.
 
-ForgeAI provides a single desktop app where you can:
+---
 
-1. **Load** a model from disk (ONNX, GGUF, SafeTensors)
-2. **Inspect** its architecture, layers, metadata, and tensor shapes
-3. **Optimize** it with one-click quantization (INT8 / INT4)
-4. **Benchmark** size, latency, and memory usage before and after
-5. **Visualize** tokenizer behavior and token flow
-6. **Export** the optimized model ready for deployment
-7. **Merge** models with genetic engineering techniques (SLERP, TIES, DARE, LoRA)
+## Screenshots
 
-All offline. No cloud. No accounts.
+<!-- Add screenshots here -->
 
 ---
 
 ## Tech Stack
 
-| Layer         | Technology                | Role                                   |
-|---------------|---------------------------|----------------------------------------|
-| Shell         | Tauri v2                  | Lightweight native desktop window      |
-| Frontend      | SvelteKit 5 (Svelte 5)   | Reactive UI with runes (`$state`)      |
-| Backend       | Rust                      | Model loading, optimization, benchmarks|
-| Async         | Tokio                     | Non-blocking task execution            |
-| Formats       | ONNX / GGML / SafeTensors | Model file parsing and export          |
-| Serialization | Serde                     | Rust <-> Frontend data exchange        |
+| Layer | Technology | Role |
+|-------|-----------|------|
+| Shell | Tauri v2 | Native desktop window (Linux, macOS, Windows) |
+| Frontend | SvelteKit 5 (Svelte 5 runes) | Reactive UI with `$state`, `$derived`, `$props` |
+| Backend | Rust | Model parsing, tensor operations, merge execution |
+| Tensors | Candle | Rust ML framework for tensor math (SLERP, TIES, DARE) |
+| GGUF Inference | llama.cpp | Quantized model inference with GPU support |
+| ST Inference | HuggingFace Transformers | SafeTensors inference via Python |
+| Model Hub | HuggingFace API | Model discovery and download |
+| Async | Tokio | Non-blocking task execution |
+| Serialization | Serde | Rust ↔ Frontend data exchange |
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────┐
-│            SvelteKit UI              │
-│  (panels, visualizers, controls)     │
-│                                      │
-│  ┌──────────┐  ┌──────────────────┐  │
-│  │ Settings │  │ M-DNA Forge      │  │
-│  │ (07)     │  │ (08) merge/LoRA  │  │
-│  └──────────┘  └──────────────────┘  │
-└──────────────┬───────────────────────┘
-               │ Tauri IPC (invoke/events)
-┌──────────────▼───────────────────────┐
-│           Rust Core                  │
-│                                      │
-│  ┌────────────┐ ┌──────────────────┐ │
-│  │ Model      │ │ Optimizer        │ │
-│  │ Loader     │ │ Engine           │ │
-│  └────────────┘ └──────────────────┘ │
-│  ┌────────────┐ ┌──────────────────┐ │
-│  │ Benchmark  │ │ Tokenizer        │ │
-│  │ Runner     │ │ Visualizer       │ │
-│  └────────────┘ └──────────────────┘ │
-│  ┌────────────┐ ┌──────────────────┐ │
-│  │ Export     │ │ M-DNA Merge      │ │
-│  │ Pipeline   │ │ Engine           │ │
-│  └────────────┘ └──────────────────┘ │
-└──────────────────────────────────────┘
+┌───────────────────────────────────────────┐
+│              SvelteKit 5 UI               │
+│   Dashboard │ Load │ Inspect │ Optimize   │
+│   Hub │ Convert │ M-DNA │ Test │ Settings │
+└──────────────────┬────────────────────────┘
+                   │ Tauri IPC (invoke / events)
+┌──────────────────▼────────────────────────┐
+│              Rust Backend                 │
+│                                           │
+│  ┌─────────────┐  ┌────────────────────┐  │
+│  │ Model       │  │ Merge Engine       │  │
+│  │ Parser      │  │ (SLERP/TIES/DARE)  │  │
+│  │ (GGUF/ST)   │  │ Candle tensors     │  │
+│  └─────────────┘  └────────────────────┘  │
+│  ┌─────────────┐  ┌────────────────────┐  │
+│  │ Quantizer   │  │ Profiler           │  │
+│  │ (llama.cpp) │  │ Layer analysis     │  │
+│  └─────────────┘  └────────────────────┘  │
+│  ┌─────────────┐  ┌────────────────────┐  │
+│  │ HF Hub      │  │ Converter          │  │
+│  │ Downloader  │  │ (ST → GGUF)        │  │
+│  └─────────────┘  └────────────────────┘  │
+└───────────────────────────────────────────┘
 ```
 
 ---
 
-## Roadmap
+## Supported Formats
 
-Development is organized into milestones. Each milestone has concrete checkpoints that must all pass before moving to the next.
-
-### Milestone 0 — Project Scaffold *(complete)*
-
-Set up the project skeleton and verify the build pipeline works end-to-end.
-
-- [x] Initialize Tauri v2 + SvelteKit + Rust project
-- [x] Verify `tauri dev` boots the app window
-- [x] Replace default boilerplate UI with ForgeAI shell layout (header, sidebar, statusbar)
-- [x] Set up dark/light theme toggle (CSS custom properties)
-- [x] Add sidebar navigation skeleton (Load, Inspect, Optimize, Benchmark, Tokenize, Export, M-DNA, Settings)
-- [x] Industrial label design system (monospace fonts, corner marks, barcode decorations)
-- [ ] Confirm cross-platform build (Linux `.AppImage`, macOS `.dmg`, Windows `.exe`)
-
-### Milestone 1 — Model Loader
-
-Load model files from disk and surface basic metadata.
-
-- [ ] File picker dialog (drag-and-drop + browse) via Tauri file dialog
-- [ ] Rust: parse ONNX protobuf and extract graph metadata
-- [ ] Rust: parse GGUF header and extract model metadata
-- [ ] Rust: parse SafeTensors header and extract tensor info
-- [ ] Display loaded model info in the UI (name, format, size, layer count, parameter count)
-- [ ] Error handling: clear messages for unsupported or corrupt files
-
-### Milestone 2 — Model Inspector
-
-Visualize the internal structure of a loaded model.
-
-- [ ] Render layer list with type, shape, and parameter count per layer
-- [ ] Expandable tensor detail view (dtype, dimensions, memory footprint)
-- [ ] Search/filter layers by name or type
-- [ ] Display model-level metadata (author, license, training config if available)
-- [ ] Layer activation probing and logit lens visualization
-
-### Milestone 3 — Quantization & Optimization
-
-Reduce model size and improve inference speed.
-
-- [ ] Rust: INT8 quantization for ONNX models
-- [ ] Rust: INT4 quantization (GPTQ / AWQ style) for GGUF models
-- [ ] Progress reporting from Rust to UI via Tauri events
-- [ ] Side-by-side comparison view: original vs. quantized (size, dtype distribution)
-- [ ] Save optimized model to disk
-
-### Milestone 4 — Benchmark Runner
-
-Measure real performance differences.
-
-- [ ] Rust: measure model file size on disk
-- [ ] Rust: measure peak memory usage during dummy inference
-- [ ] Rust: measure inference latency (avg over N runs, with warmup)
-- [ ] UI: benchmark results table with before/after columns
-- [ ] UI: bar chart visualization for latency and memory comparison
-
-### Milestone 5 — Tokenizer Visualizer
-
-Help users understand how text is processed.
-
-- [ ] Rust: load tokenizer from model or standalone tokenizer file
-- [ ] Tokenize input text and return token IDs + token strings
-- [ ] UI: interactive text input with color-coded token spans
-- [ ] Display token count, vocabulary size, and special tokens
-
-### Milestone 6 — Export Pipeline
-
-Package optimized models for deployment targets.
-
-- [ ] Export quantized ONNX with metadata preserved
-- [ ] Export GGUF with selected quantization level
-- [ ] Bundle model + tokenizer into a single output directory
-- [ ] Configurable export: choose target format, precision, and output path
-
-### Milestone 7 — M-DNA Forge
-
-Genetic model engineering — merge, splice, and evolve models.
-
-- [x] UI: M-DNA Forge page with parent model grid, merge controls, DNA visualization
-- [ ] Multi-model merge methods: AVERAGE, SLERP, TIES, DARE
-- [ ] LoRA adapter loading and merge (strength slider, enable/disable per adapter)
-- [ ] Layer-selective merge: choose weight ranges per parent model (attention, MLP, embeddings)
-- [ ] Gene color visualization: map layer types to DNA strand display
-- [ ] Weight validation: ensure parent model weights total 100%
-- [ ] Rust: execute SLERP interpolation across model tensors
-- [ ] Rust: execute TIES (trim, elect, merge) with density threshold
-- [ ] Rust: execute DARE (drop and rescale) with probability control
-- [ ] Rust: LoRA merge into base model with configurable alpha
-- [ ] Progress reporting during merge operations
-- [ ] Export merged model to SafeTensors / GGUF
-
-### Future (Post-MVP)
-
-Not in scope for the initial release, but planned:
-
-- GPU / NPU acceleration for benchmarks and inference
-- Plugin system for community-contributed optimizers and visualizers
-- Advanced compression (pruning, distillation, knowledge transfer)
-- Model diffing (compare two model versions)
-- Layer Inspector: activation probing, logit lens, causal tracing
-- Mobile companion app for on-device testing
+| Format | Load | Inspect | Optimize | Convert | Merge | Test |
+|--------|:----:|:-------:|:--------:|:-------:|:-----:|:----:|
+| GGUF | ✓ | ✓ | ✓ | output | ✓ | ✓ |
+| SafeTensors | ✓ | ✓ | — | input | ✓ | ✓ |
+| Sharded Folders | ✓ | ✓ | — | input | ✓ | ✓ |
 
 ---
 
-## Constraints
+## M-DNA Forge — Model Merging
 
-These apply for the entire MVP and should not be relaxed:
+Merge 2–5 parent models into hybrid offspring with full control over merge strategy and layer composition.
 
-- **Local only** — no network calls, no telemetry, no cloud
-- **CPU first** — GPU support is deferred to post-MVP
-- **Offline** — the app must work without an internet connection
+| Method | Description |
+|--------|-------------|
+| **SLERP** | Spherical interpolation — best for 2-model merges |
+| **TIES** | Trim, elect sign, merge — resolves task vector interference |
+| **DARE** | Drop and rescale — prunes delta parameters |
+| **DeLLa** | Density-based layer-level adaptive merging |
+| **Frankenmerge** | Cherry-pick specific layers from specific parents |
+| **Task Arithmetic** | Add task vectors from multiple finetunes |
+| **Passthrough** | Stack layers sequentially |
+| **Average** | Weighted mean of tensors |
 
----
-
-## Design Principles
-
-- **Industrial label aesthetic** — monospace fonts, 0px border-radius, 1px borders, corner marks, barcode decorations, dense grid layouts
-- **Color semantics** — colors represent application state, not user preference:
-
-  | Color  | Variable    | Meaning             |
-  |--------|-------------|---------------------|
-  | Amber  | `--accent`  | Idle / Default      |
-  | Blue   | `--info`    | Working / Processing|
-  | Green  | `--success` | Success / Complete  |
-  | Red    | `--danger`  | Danger / Error      |
-  | Gray   | `--gray`    | Paused / Inactive   |
-
-- **Keyboard-first** — all primary actions accessible without a mouse
-- **Real-time feedback** — progress bars and streaming logs for long operations
-- **Fail clearly** — every error state has a user-readable message and suggested action
+Features:
+- Isometric 3D visualization of parent and offspring towers
+- Layer specialization analysis (Syntactic / Semantic / Reasoning)
+- Auto-assign layers (Split / Interleave)
+- Output to SafeTensors (HF-compatible directory) or GGUF (with embedded tokenizer)
+- Background execution — navigate freely while merge runs
 
 ---
 
-## Development
+## Design
+
+Industrial label / technical spec sheet aesthetic:
+
+- **Font**: JetBrains Mono (system monospace stack)
+- **Theme**: Dark default, light available
+- **Corners**: 0px border-radius (sharp everywhere)
+- **Borders**: 1px everywhere, grid-based layouts
+- **Decorations**: Corner marks on panels, barcode patterns, serial identifiers
+- **Color semantics**:
+
+| Color | Variable | Meaning |
+|-------|----------|---------|
+| Amber | `--accent` | Idle / Default |
+| Blue | `--info` | Working / Processing |
+| Green | `--success` | Success / Complete |
+| Red | `--danger` | Error / Failure |
+| Gray | `--gray` | Paused / Inactive |
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (latest stable)
-- [Node.js](https://nodejs.org/) (v18+)
+- [Node.js](https://nodejs.org/) (v20+)
 - [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS
+- Python 3.10+ (optional — for SafeTensors conversion)
 
 ### Run locally
 
@@ -227,11 +152,58 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### Quick start
+
+1. Launch ForgeAI
+2. Go to **Load** (01) → import a GGUF or SafeTensors model
+3. Go to **Inspect** (02) → explore architecture, memory layout, compatibility
+4. Go to **Optimize** (03) → quantize to a smaller size
+5. Go to **Test** (09) → run inference and see token output
+
 ---
 
-## Status
+## System Requirements
 
-**Milestone 0 — complete.** Shell layout, theme toggle, sidebar navigation, settings page, and industrial design system are implemented. M-DNA Forge UI (Milestone 7) is in progress. Next up: Milestone 1 (Model Loader).
+| | Minimum | Recommended |
+|-|---------|-------------|
+| **OS** | Linux, macOS, Windows | — |
+| **RAM** | 8 GB | 16 GB+ |
+| **Disk** | 2 GB + model storage | SSD with 50 GB+ free |
+| **GPU** | Not required | NVIDIA (CUDA) / AMD (Vulkan) / Apple Silicon (Metal) |
+
+---
+
+## Project Structure
+
+```
+src/                          # SvelteKit frontend
+├── routes/                   # Pages (dashboard, load, inspect, optimize, hub, convert, dna, test, settings)
+├── lib/                      # Stores (model.svelte.ts, dna.svelte.ts, hub.svelte.ts, etc.)
+└── app.css                   # Global design system
+
+src-tauri/                    # Rust backend
+├── src/
+│   ├── lib.rs                # Tauri app setup + command registration
+│   ├── commands.rs           # Load, inspect, optimize, convert, test commands
+│   ├── merge_commands.rs     # M-DNA merge commands
+│   ├── model/                # Model parsing (GGUF, SafeTensors), state, errors
+│   └── merge/                # Merge engine (methods, planner, executor, profiler, registry)
+└── tauri.conf.json           # Tauri config (1100x720 window)
+
+docs/                         # Mintlify documentation site
+```
+
+---
+
+## Documentation
+
+Full documentation available at the [docs site](docs/) (Mintlify).
+
+Covers every module with feature descriptions, workflows, and guides for:
+- [Supported Formats](docs/guides/supported-formats.mdx)
+- [Merge Methods](docs/guides/merge-methods.mdx)
+- [Quantization Levels](docs/guides/quantization-levels.mdx)
+- [GPU Setup](docs/guides/gpu-setup.mdx)
 
 ---
 
