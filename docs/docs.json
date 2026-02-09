@@ -23,13 +23,13 @@
     "links": [
       {
         "type": "github",
-        "href": "https://github.com/yourusername/ForgeAi"
+        "href": "https://github.com/siddhesh2377/ForgeAi"
       }
     ],
     "primary": {
       "type": "button",
       "label": "Download",
-      "href": "https://github.com/yourusername/ForgeAi/releases"
+      "href": "https://github.com/siddhesh2377/ForgeAi/releases"
     }
   },
   "navigation": {
@@ -75,13 +75,13 @@
       {
         "anchor": "GitHub",
         "icon": "github",
-        "href": "https://github.com/yourusername/ForgeAi"
+        "href": "https://github.com/siddhesh2377/ForgeAi"
       }
     ]
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/yourusername/ForgeAi"
+      "github": "https://github.com/siddhesh2377/ForgeAi"
     }
   }
 }
