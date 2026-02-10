@@ -2382,12 +2382,14 @@ if has_cuda:
         if is_quantized:
             # Quantized models: use device_map="auto" (requires accelerate)
             model = AutoModelForCausalLM.from_pretrained(
-                path, device_map="auto", trust_remote_code=True, low_cpu_mem_usage=True
+                path, device_map="auto", trust_remote_code=True, low_cpu_mem_usage=True,
+                ignore_mismatched_sizes=True,
             )
             device = "cuda"
         else:
             model = AutoModelForCausalLM.from_pretrained(
-                path, torch_dtype=torch.float16, low_cpu_mem_usage=True, trust_remote_code=True
+                path, torch_dtype=torch.float16, low_cpu_mem_usage=True, trust_remote_code=True,
+                ignore_mismatched_sizes=True,
             ).to("cuda")
             device = "cuda"
     except Exception:
@@ -2401,6 +2403,7 @@ if model is None:
         try:
             model = AutoModelForCausalLM.from_pretrained(
                 path, device_map="cpu", trust_remote_code=True, low_cpu_mem_usage=True,
+                ignore_mismatched_sizes=True,
                 quantization_config=BitsAndBytesConfig(load_in_8bit=False, load_in_4bit=False) if not has_cuda else None,
             )
         except Exception:
@@ -2411,7 +2414,8 @@ if model is None:
             )
     else:
         model = AutoModelForCausalLM.from_pretrained(
-            path, torch_dtype=torch.float32, low_cpu_mem_usage=True, trust_remote_code=True
+            path, torch_dtype=torch.float32, low_cpu_mem_usage=True, trust_remote_code=True,
+            ignore_mismatched_sizes=True,
         )
 
 sys.stderr.write(f"[device:{device}]\n")

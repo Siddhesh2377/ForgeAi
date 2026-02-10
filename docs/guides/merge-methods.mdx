@@ -159,7 +159,26 @@ Uses parent models as expert networks and creates a gating mechanism.
 | Create deeper model | Passthrough |
 | Route components separately | Component Merge |
 | Create MoE from dense | MoE Conversion |
+| Different-sized models | Any method + Interpolation strategy |
 | Quick experiment | Average (with caution) |
+
+## Cross-Dimension Resolution Strategies
+
+When merging models with **different hidden dimensions** or vocab sizes, ForgeAI applies a resolution strategy to adapt tensor shapes before running the merge method.
+
+| Strategy | How It Works | Output Size | Quality |
+|----------|-------------|:-----------:|:-------:|
+| **Interpolation** | Linear (1D) or nearest-neighbor (2D) resize to target shape | Matches first parent | Medium |
+| **Zero Padding** | Pads smaller tensors with zeros to match largest parent | Matches largest parent | Medium |
+| **Truncation** | Narrows larger tensors to match smallest parent | Matches smallest parent | Low |
+
+<Note>
+  **Interpolation** is auto-selected when a dimension mismatch is detected. You can change the strategy in the compatibility panel before merging.
+</Note>
+
+<Warning>
+  Cross-dimension merging is experimental. Results depend heavily on how similar the model architectures are despite different sizes. Test output quality carefully.
+</Warning>
 
 ## Quick Presets
 

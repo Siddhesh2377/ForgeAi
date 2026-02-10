@@ -104,6 +104,21 @@ With 2+ parents loaded, ForgeAI validates:
 - Layer count match
 - Shared tensor count
 
+## Cross-Dimension Merging
+
+When parent models have **different hidden dimensions** (e.g., 640 vs 1152), ForgeAI can still merge them using a resolution strategy. The strategy adapts tensor shapes before the merge operation runs.
+
+| Strategy | Quality | Description |
+|----------|:-------:|-------------|
+| **Interpolation** | Medium | Resize tensors via linear/nearest-neighbor interpolation to match target shape. Default when dimensions mismatch. |
+| **Zero Padding** | Medium | Pad smaller tensors with zeros to match the largest parent's shape. |
+| **Truncation** | Low | Truncate larger tensors to match the smallest parent's shape. Loses data. |
+| **MoE Routing** | High | Convert to Mixture-of-Experts — each parent becomes an expert, bypassing dimension issues entirely. |
+
+<Note>
+  When a dimension mismatch is detected, **Interpolation** is auto-selected. Click any strategy in the compatibility panel to switch.
+</Note>
+
 ## Output Formats
 
 | Format | Output |

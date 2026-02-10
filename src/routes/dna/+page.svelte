@@ -581,18 +581,36 @@
                   </div>
                 {/if}
 
+                <!-- Dimension mismatch warning -->
+                {#if !dna.compatReport.dimension_match}
+                  {@const dims = dna.compatReport.dimension_details.find(d => d.dimension_name === "hidden_dim")}
+                  {#if dims}
+                    {@const values = dims.values.map(v => v[1])}
+                    {@const ratio = Math.max(...values) / Math.min(...values)}
+                    {#if ratio > 1.5}
+                      <div class="compat-error" style="margin-top: 6px; padding: 6px; border: 1px solid var(--danger);">
+                        <span class="label-xs danger-text">CROSS-DIMENSION MERGE: {Math.min(...values)} → {Math.max(...values)} ({ratio.toFixed(1)}x gap). Output quality will be severely degraded. This only works well for models with similar architectures and minor dimension differences.</span>
+                      </div>
+                    {/if}
+                  {/if}
+                {/if}
+
                 <!-- Resolution strategies -->
                 {#if dna.compatReport.resolution_strategies.length > 0}
                   <div class="strat-section" style="margin-top: 6px;">
                     <span class="label-xs" style="color: var(--text-muted); margin-bottom: 4px;">RESOLUTION STRATEGIES</span>
                     {#each dna.compatReport.resolution_strategies as strat}
-                      <div class="strat-item">
+                      <button
+                        class="strat-item"
+                        class:strat-selected={dna.projectionStrategy === strat.name}
+                        onclick={() => { dna.projectionStrategy = strat.name; }}
+                      >
                         <div class="strat-header">
-                          <span class="badge" class:badge-accent={strat.quality_estimate === "high"} class:badge-dim={strat.quality_estimate !== "high"}>{strat.name.toUpperCase().replace("_", " ")}</span>
+                          <span class="badge" class:badge-accent={dna.projectionStrategy === strat.name} class:badge-dim={dna.projectionStrategy !== strat.name}>{strat.name.toUpperCase().replace("_", " ")}</span>
                           <span class="label-xs" style="color: var(--text-muted);">{strat.quality_estimate.toUpperCase()}</span>
                         </div>
                         <span class="label-xs" style="color: var(--text-secondary);">{strat.description}</span>
-                      </div>
+                      </button>
                     {/each}
                   </div>
                 {/if}
@@ -1409,6 +1427,19 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: border-color 0.15s;
+  }
+  .strat-item:hover {
+    border-color: var(--text-secondary);
+  }
+  .strat-selected {
+    border-color: var(--accent);
   }
   .strat-header {
     display: flex;

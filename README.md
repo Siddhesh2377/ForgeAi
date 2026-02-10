@@ -517,6 +517,7 @@ Interactive tower view showing all parent models and the resulting offspring. Ea
 - **Capability Detection** — detect and filter layers by capability (reasoning, code, math, etc.)
 - **Layer Analysis** — specialization profiling (Syntactic / Semantic / Reasoning)
 - **Compatibility Check** — validates architecture and dimension compatibility across parents
+- **Cross-Dimension Merging** — merge models with different hidden dimensions via resolution strategies (Interpolation, Zero Padding, Truncation)
 - **Batch Size Control** — 1–16 tensors processed concurrently (higher = faster, more RAM)
 - **Composition Stats** — real-time parent weight and layer distribution
 - **Output Formats** — SafeTensors (HF-compatible directory) or GGUF (with embedded tokenizer)

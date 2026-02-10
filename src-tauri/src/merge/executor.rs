@@ -207,12 +207,56 @@ pub fn execute_merge(
                     parent_tensors.push((tensor, *weight));
                 }
 
-                // Apply projection if strategy is set and shapes mismatch
-                if let Some(ref proj_strategy) = config.projection_strategy {
-                    if parent_tensors.len() >= 2 {
-                        // Use first parent's shape as target
-                        let target_shape: Vec<usize> = parent_tensors[0].0.dims().to_vec();
-                        for i in 1..parent_tensors.len() {
+                // Apply projection when shapes mismatch
+                if parent_tensors.len() >= 2 {
+                    let shapes_match = {
+                        let first = parent_tensors[0].0.dims();
+                        parent_tensors.iter().all(|(t, _)| t.dims() == first)
+                    };
+
+                    if !shapes_match {
+                        let proj_strategy = config
+                            .projection_strategy
+                            .as_deref()
+                            .unwrap_or("interpolation");
+
+                        // Pick the right target shape based on strategy:
+                        // - zero_padding: use LARGEST shape (smaller tensors get padded up)
+                        // - truncation: use SMALLEST shape (larger tensors get cut down)
+                        // - interpolation: use first parent (interpolation handles both directions)
+                        let target_shape: Vec<usize> = match proj_strategy {
+                            "zero_padding" => {
+                                let mut max_shape = parent_tensors[0].0.dims().to_vec();
+                                for (t, _) in &parent_tensors[1..] {
+                                    let dims = t.dims();
+                                    if dims.len() == max_shape.len() {
+                                        for (i, &d) in dims.iter().enumerate() {
+                                            if d > max_shape[i] {
+                                                max_shape[i] = d;
+                                            }
+                                        }
+                                    }
+                                }
+                                max_shape
+                            }
+                            "truncation" => {
+                                let mut min_shape = parent_tensors[0].0.dims().to_vec();
+                                for (t, _) in &parent_tensors[1..] {
+                                    let dims = t.dims();
+                                    if dims.len() == min_shape.len() {
+                                        for (i, &d) in dims.iter().enumerate() {
+                                            if d < min_shape[i] {
+                                                min_shape[i] = d;
+                                            }
+                                        }
+                                    }
+                                }
+                                min_shape
+                            }
+                            _ => parent_tensors[0].0.dims().to_vec(),
+                        };
+
+                        for i in 0..parent_tensors.len() {
                             if parent_tensors[i].0.dims() != target_shape.as_slice() {
                                 let adapted = projections::adapt_tensor(
                                     &parent_tensors[i].0,
@@ -298,6 +342,11 @@ pub fn execute_merge(
     // Phase 4b: Copy auxiliary files
     emit_phase(app, "copying", "Copying tokenizer and config files");
     let copied_files = copy_auxiliary_files(&aux_target_dir, registry, config.base_parent_id.as_deref());
+
+    // Phase 4c: Patch config.json if projection was used (cross-dimension merge)
+    if config.projection_strategy.is_some() || !registry.all_same_hidden_dim() {
+        patch_config_json(&aux_target_dir, &manifest);
+    }
 
     // Phase 5: Verifying
     emit_phase(app, "verifying", "Checking output integrity");
@@ -392,4 +441,67 @@ fn copy_auxiliary_files(
     }
 
     copied
+}
+
+/// Patch config.json in the output directory to match the actual merged tensor dimensions.
+/// This is needed when cross-dimension merging changes hidden_size, num_layers, etc.
+fn patch_config_json(output_dir: &str, manifest: &precompute::OutputManifest) {
+    use std::path::Path;
+
+    let config_path = Path::new(output_dir).join("config.json");
+    if !config_path.exists() {
+        return;
+    }
+
+    let content = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let mut config: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let obj = match config.as_object_mut() {
+        Some(o) => o,
+        None => return,
+    };
+
+    // Infer hidden_size from an embedding tensor: shape = [vocab_size, hidden_size]
+    for info in &manifest.tensors {
+        if info.name.contains("embed_tokens") && info.shape.len() == 2 {
+            obj.insert("hidden_size".into(), serde_json::json!(info.shape[1]));
+            obj.insert("vocab_size".into(), serde_json::json!(info.shape[0]));
+            break;
+        }
+    }
+
+    // Infer num_hidden_layers from the highest layer index in tensor names
+    let mut max_layer: Option<u64> = None;
+    for info in &manifest.tensors {
+        let parts: Vec<&str> = info.name.split('.').collect();
+        for (i, part) in parts.iter().enumerate() {
+            if (*part == "layers" || *part == "h") && i + 1 < parts.len() {
+                if let Ok(idx) = parts[i + 1].parse::<u64>() {
+                    max_layer = Some(max_layer.map_or(idx, |m: u64| m.max(idx)));
+                }
+            }
+        }
+    }
+    if let Some(max_idx) = max_layer {
+        obj.insert("num_hidden_layers".into(), serde_json::json!(max_idx + 1));
+    }
+
+    // Infer intermediate_size from MLP gate/up projection: shape = [intermediate_size, hidden_size]
+    for info in &manifest.tensors {
+        if (info.name.contains("gate_proj") || info.name.contains("up_proj")) && info.shape.len() == 2 {
+            obj.insert("intermediate_size".into(), serde_json::json!(info.shape[0]));
+            break;
+        }
+    }
+
+    if let Ok(patched) = serde_json::to_string_pretty(&config) {
+        let _ = std::fs::write(&config_path, patched);
+    }
 }

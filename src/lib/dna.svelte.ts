@@ -210,6 +210,7 @@ class DnaStore {
   outputPath = $state("");
   modelName = $state("merged-model");
   mergeBatchSize = $state(1);
+  projectionStrategy = $state<string | null>(null);
 
   // Available methods
   methods = $state<MergeMethodInfo[]>([]);
@@ -551,6 +552,10 @@ class DnaStore {
   async checkCompatibility() {
     try {
       this.compatReport = await invoke<CompatReport>("merge_check_compatibility");
+      // Auto-select interpolation when dimension mismatch detected and no strategy set
+      if (!this.compatReport.dimension_match && !this.projectionStrategy) {
+        this.projectionStrategy = "interpolation";
+      }
     } catch (e) {
       console.error("Compatibility check failed:", e);
     }
@@ -678,6 +683,7 @@ class DnaStore {
         model_name: this.modelName,
       },
       memory_limit_mb: memoryLimitMb,
+      projection_strategy: this.projectionStrategy,
       skip_layers: this.disabledLayers,
       batch_size: this.mergeBatchSize,
     };

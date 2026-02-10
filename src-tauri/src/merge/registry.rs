@@ -179,6 +179,13 @@ impl ParentRegistry {
         self.parents.is_empty()
     }
 
+    pub fn all_same_hidden_dim(&self) -> bool {
+        let dims: Vec<u64> = self.parents.iter()
+            .filter_map(|p| p.compat.hidden_size)
+            .collect();
+        dims.len() < 2 || dims.windows(2).all(|w| w[0] == w[1])
+    }
+
     pub fn shared_tensor_names(&self) -> HashSet<String> {
         if self.parents.len() < 2 {
             return HashSet::new();
