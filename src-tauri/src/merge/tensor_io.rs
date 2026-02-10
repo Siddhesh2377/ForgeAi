@@ -246,7 +246,7 @@ pub fn load_tensor(parent: &ParentModel, tensor_name: &str) -> Result<Tensor, Mo
 
 /// Get list of all tensor names from a parent model.
 pub fn get_tensor_names(parent: &ParentModel) -> Vec<String> {
-    parent.compat.tensor_names.clone()
+    parent.compat.tensor_names()
 }
 
 fn safetensors_dtype_to_candle(dtype: &str) -> Result<(DType, usize), ModelError> {

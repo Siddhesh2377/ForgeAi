@@ -32,6 +32,10 @@ pub enum ModelError {
         tensor_name: String,
         parent_id: String,
     },
+    #[error("Training error: {0}")]
+    TrainingError(String),
+    #[error("Training cancelled")]
+    TrainingCancelled,
 }
 
 impl Serialize for ModelError {

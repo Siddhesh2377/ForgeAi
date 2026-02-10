@@ -97,9 +97,18 @@ pub fn build_plan(
 
     // Collect all tensor names from first parent as baseline
     let primary_parent = &all_parents[0];
-    let tensor_names = &primary_parent.compat.tensor_names;
+    let tensor_names = primary_parent.compat.tensor_names();
 
-    for tensor_name in tensor_names {
+    for tensor_name in &tensor_names {
+        // Skip layers if configured
+        if !config.skip_layers.is_empty() {
+            if let Some(layer_idx) = inspect::extract_layer_index(tensor_name) {
+                if config.skip_layers.contains(&layer_idx) {
+                    continue;
+                }
+            }
+        }
+
         // Priority 1: Tensor-level override
         if let Some(&source_id) = tensor_override_map.get(tensor_name.as_str()) {
             operations.push(TensorOperation::Copy {

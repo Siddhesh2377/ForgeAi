@@ -1,25 +1,65 @@
 <script lang="ts">
   import "../app.css";
   import { page } from "$app/stores";
+  import { invoke } from "@tauri-apps/api/core";
   import { theme } from "$lib/theme.svelte";
   import { model } from "$lib/model.svelte";
   import { dna } from "$lib/dna.svelte";
+  import { training } from "$lib/training.svelte";
 
   let { children } = $props();
 
-  const modules = [
-    { code: "00", name: "DASHBOARD", href: "/" },
-    { code: "01", name: "LOAD", href: "/load" },
-    { code: "02", name: "INSPECT", href: "/inspect" },
-    { code: "03", name: "OPTIMIZE", href: "/optimize" },
-    { code: "04", name: "HUB", href: "/hub" },
-    { code: "05", name: "CONVERT", href: "/convert" },
-    { code: "08", name: "M-DNA", href: "/dna" },
-    { code: "09", name: "TEST", href: "/test" },
+  interface SystemInfo {
+    total_ram_mb: number;
+    available_ram_mb: number;
+    used_ram_mb: number;
+    cpu_name: string;
+    cpu_cores: number;
+    cpu_threads: number;
+  }
+
+  let sysInfo = $state<SystemInfo | null>(null);
+
+  async function refreshSystemInfo() {
+    try {
+      sysInfo = await invoke<SystemInfo>("get_system_info");
+    } catch {}
+  }
+
+  $effect(() => {
+    refreshSystemInfo();
+    const interval = setInterval(refreshSystemInfo, 5000);
+    return () => clearInterval(interval);
+  });
+
+  // Apply font settings globally
+  $effect(() => {
+    document.documentElement.style.setProperty("--font-mono", theme.fontFamilyCss);
+    document.documentElement.style.setProperty("font-size", `${theme.fontSize}px`);
+  });
+
+  const moduleGroups = [
+    { label: "MODEL", modules: [
+      { code: "01", name: "LOAD", href: "/load" },
+      { code: "02", name: "INSPECT", href: "/inspect" },
+      { code: "03", name: "COMPRESS", href: "/optimize" },
+    ]},
+    { label: "DATA", modules: [
+      { code: "04", name: "HUB", href: "/hub" },
+      { code: "10", name: "DATASTUDIO", href: "/datastudio" },
+      { code: "06", name: "TRAINING", href: "/training" },
+    ]},
+    { label: "TOOLS", modules: [
+      { code: "05", name: "CONVERT", href: "/convert" },
+      { code: "08", name: "M-DNA", href: "/dna" },
+      { code: "09", name: "TEST", href: "/test" },
+    ]},
   ];
 
   // Global task state for sidebar progress
   const taskState = $derived.by(() => {
+    if (training.training) return { active: true, label: "TRAINING", percent: training.progress?.percent ?? 0, color: "info" } as const;
+    if (training.surgeryRunning) return { active: true, label: "SURGERY", percent: 0, color: "info" } as const;
     if (dna.merging) return { active: true, label: "MERGING", percent: dna.mergeProgress?.percent ?? 0, color: "info" } as const;
     if (dna.analyzing) return { active: true, label: "ANALYZING", percent: dna.analysisProgress?.percent ?? 0, color: "info" } as const;
     if (dna.profiling) return { active: true, label: "PROFILING", percent: 0, color: "info" } as const;
@@ -64,12 +104,20 @@
   <div class="body">
     <!-- Sidebar -->
     <nav class="sidebar">
-      <div class="sidebar-label">
-        <span class="divider-label">MODULES</span>
-      </div>
+      <!-- Dashboard link -->
+      <a class="nav-item" class:active={isActive("/")} href="/">
+        <span class="nav-code">00</span>
+        <span class="nav-name">DASHBOARD</span>
+        {#if isActive("/")}
+          <span class="nav-indicator"></span>
+        {/if}
+      </a>
 
-      {#each modules as mod}
-        {#if mod.href}
+      {#each moduleGroups as group}
+        <div class="sidebar-label">
+          <span class="divider-label">{group.label}</span>
+        </div>
+        {#each group.modules as mod}
           <a
             class="nav-item"
             class:active={isActive(mod.href)}
@@ -81,12 +129,7 @@
               <span class="nav-indicator"></span>
             {/if}
           </a>
-        {:else}
-          <button class="nav-item nav-disabled" disabled>
-            <span class="nav-code">{mod.code}</span>
-            <span class="nav-name">{mod.name}</span>
-          </button>
-        {/if}
+        {/each}
       {/each}
 
       <div class="sidebar-spacer"></div>
@@ -134,7 +177,7 @@
     </nav>
 
     <!-- Main Content -->
-    <main class="main" class:main-centered={theme.layout === "centered"}>
+    <main class="main">
       {@render children()}
     </main>
   </div>
@@ -170,9 +213,9 @@
       {/if}
     </div>
     <div class="statusbar-right">
-      <span>CPU</span>
+      <span>{sysInfo ? sysInfo.cpu_cores + 'C/' + sysInfo.cpu_threads + 'T' : 'CPU'}</span>
       <span class="statusbar-sep">|</span>
-      <span>MEM: --</span>
+      <span>MEM: {sysInfo ? ((sysInfo.total_ram_mb - sysInfo.available_ram_mb) / 1024).toFixed(1) + '/' + (sysInfo.total_ram_mb / 1024).toFixed(1) + ' GB' : '--'}</span>
       <span class="statusbar-sep">|</span>
       <span>FORGEAI v0.1.0</span>
     </div>
@@ -297,16 +340,6 @@
     border-left-color: var(--accent);
     color: var(--text-primary);
     background: var(--accent-bg);
-  }
-
-  .nav-disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-  }
-
-  .nav-disabled:hover {
-    background: none;
-    color: var(--text-secondary);
   }
 
   .nav-code {

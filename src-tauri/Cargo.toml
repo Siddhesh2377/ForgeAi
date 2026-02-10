@@ -41,4 +41,7 @@ candle-nn = "0.8"
 rand = "0.8"
 uuid = { version = "1", features = ["v4"] }
 rayon = "1.10"
+sysinfo = "0.32"
+parquet = { version = "54", default-features = false, features = ["arrow", "snap", "zstd"] }
+arrow-json = "54"
 

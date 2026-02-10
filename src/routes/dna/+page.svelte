@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { dna, type DnaMode, type DnaTab, type ParentModelInfo, type LayerProfile, type HoveredLayer, type LayerAnalysis } from "$lib/dna.svelte";
+  import { dna, MERGE_PRESETS, type MergePreset, type DnaMode, type DnaTab, type ParentModelInfo, type LayerProfile, type HoveredLayer, type LayerAnalysis, type Capability } from "$lib/dna.svelte";
 
   function getSerial() {
     return `FRG-${String(Date.now()).slice(-6)}`;
@@ -273,6 +273,8 @@
   onDestroy(() => { dna.destroy(); });
 </script>
 
+<svelte:window onmousemove={(e) => { mouseX = e.clientX; mouseY = e.clientY; }} />
+
 <div class="dna-page fade-in">
   <!-- ── Hero Panel ──────────────────────────────────── -->
   <div class="hero panel">
@@ -398,6 +400,25 @@
                   {/if}
                 </g>
               {/each}
+              <!-- Tower label below base -->
+              {@const labelPos = isoXY(tower.originX + tower.W / 2, tower.D + 8, -6)}
+              <text
+                x={labelPos[0]}
+                y={labelPos[1]}
+                class="iso-tower-label"
+                text-anchor="middle"
+                dominant-baseline="hanging"
+              >{tower.label}</text>
+              <!-- Layer count above top -->
+              {@const topZ = Math.min(tower.layerCount, 64) * tower.step + tower.H}
+              {@const countPos = isoXY(tower.originX + tower.W / 2, tower.D / 2, topZ + 8)}
+              <text
+                x={countPos[0]}
+                y={countPos[1]}
+                class="iso-tower-count"
+                text-anchor="middle"
+                dominant-baseline="auto"
+              >{tower.layerCount}L</text>
             {/each}
           </svg>
         </div>
@@ -442,66 +463,6 @@
           {/if}
         </div>
 
-        <!-- Floating tooltip -->
-        {#if dna.hoveredLayer && (tooltipData || tooltipAnalysis)}
-          {@const hov = dna.hoveredLayer}
-          {@const td = tooltipData}
-          {@const ta = tooltipAnalysis}
-          {@const tp = tooltipParent}
-          <div class="iso-tooltip" style="left: {mouseX + 16}px; top: {mouseY - 16}px;">
-            <div class="iso-tooltip-bar" style="background: {ta?.color ?? tp?.color ?? 'var(--accent)'};"></div>
-            <div class="iso-tooltip-header">
-              <span class="iso-tooltip-type">{tp ? tp.name.slice(0, 14) : 'OFFSPRING'}</span>
-              <span class="heading-sm">LAYER {hov.layerIndex}</span>
-            </div>
-            <div class="iso-tooltip-body">
-              {#if ta}
-                <!-- Analysis category banner -->
-                <div class="iso-tooltip-cat" style="background: {ta.color}20; border-color: {ta.color}60;">
-                  <span class="iso-tooltip-cat-label" style="color: {ta.color};">{ta.label}</span>
-                  <span class="iso-tooltip-cat-desc">{ta.description}</span>
-                </div>
-                <div class="iso-tooltip-row">
-                  <span class="label-xs">CONFIDENCE</span>
-                  <span class="code" style="color: {ta.color};">{(ta.confidence * 100).toFixed(0)}%</span>
-                </div>
-                <div class="iso-tooltip-sep"></div>
-              {/if}
-              {#if td}
-                <div class="iso-tooltip-row">
-                  <span class="label-xs">TENSORS</span>
-                  <span class="code">{td.totalTensors}</span>
-                </div>
-                <div class="iso-tooltip-sep"></div>
-                <div class="iso-tooltip-row">
-                  <span class="label-xs" style="color: var(--info);">ATTENTION</span>
-                  <span class="code">{td.attn.length}</span>
-                </div>
-                <div class="iso-tooltip-row">
-                  <span class="label-xs" style="color: var(--success);">MLP</span>
-                  <span class="code">{td.mlp.length}</span>
-                </div>
-                {#if td.norm.length > 0}
-                  <div class="iso-tooltip-row">
-                    <span class="label-xs" style="color: var(--gray);">NORMS</span>
-                    <span class="code">{td.norm.length}</span>
-                  </div>
-                {/if}
-              {/if}
-              {#if ta}
-                <div class="iso-tooltip-sep"></div>
-                <div class="iso-tooltip-row">
-                  <span class="label-xs">MLP DOM.</span>
-                  <span class="code">{(ta.mlp_dominance * 100).toFixed(0)}%</span>
-                </div>
-                <div class="iso-tooltip-row">
-                  <span class="label-xs">NORM L2</span>
-                  <span class="code">{ta.norm_l2.toFixed(2)}</span>
-                </div>
-              {/if}
-            </div>
-          </div>
-        {/if}
       {:else}
         <div class="iso-empty">
           <span class="label-xs" style="color: var(--text-muted);">LOAD PARENT MODELS TO VISUALIZE</span>
@@ -600,6 +561,68 @@
                 {#each dna.compatReport.warnings as warn}
                   <div class="compat-warn"><span class="label-xs" style="color: var(--accent)">{warn}</span></div>
                 {/each}
+
+                <!-- Dimension details -->
+                {#if dna.compatReport.dimension_details.length > 0}
+                  <div class="dim-section" style="margin-top: 8px;">
+                    <span class="label-xs" style="color: var(--text-muted); margin-bottom: 4px;">DIMENSION ANALYSIS</span>
+                    <div class="dim-grid">
+                      {#each dna.compatReport.dimension_details as dim}
+                        <div class="dim-item" class:dim-error={dim.severity === "error"} class:dim-warn={dim.severity === "warning"}>
+                          <span class="label-xs">{dim.dimension_name.toUpperCase().replace("_", " ")}</span>
+                          <div class="dim-values">
+                            {#each dim.values as [name, val]}
+                              <span class="code-sm" title={name}>{val.toLocaleString()}</span>
+                            {/each}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
+
+                <!-- Resolution strategies -->
+                {#if dna.compatReport.resolution_strategies.length > 0}
+                  <div class="strat-section" style="margin-top: 6px;">
+                    <span class="label-xs" style="color: var(--text-muted); margin-bottom: 4px;">RESOLUTION STRATEGIES</span>
+                    {#each dna.compatReport.resolution_strategies as strat}
+                      <div class="strat-item">
+                        <div class="strat-header">
+                          <span class="badge" class:badge-accent={strat.quality_estimate === "high"} class:badge-dim={strat.quality_estimate !== "high"}>{strat.name.toUpperCase().replace("_", " ")}</span>
+                          <span class="label-xs" style="color: var(--text-muted);">{strat.quality_estimate.toUpperCase()}</span>
+                        </div>
+                        <span class="label-xs" style="color: var(--text-secondary);">{strat.description}</span>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              </div>
+            {/if}
+
+            <!-- Capability filter -->
+            {#if dna.allDetectedCapabilities.length > 0}
+              <div class="cap-filter-section">
+                <span class="divider-label">CAPABILITY FILTER</span>
+                <div class="cap-toggle-grid">
+                  {#each dna.allDetectedCapabilities as cap}
+                    {@const enabled = dna.capabilityToggles[cap.id] ?? true}
+                    <button
+                      class="cap-toggle"
+                      class:cap-on={enabled}
+                      class:cap-off={!enabled}
+                      onclick={() => dna.toggleCapability(cap.id)}
+                      title="{cap.name}: {cap.affected_layers.length} layers, {(cap.confidence * 100).toFixed(0)}% confidence"
+                    >
+                      <span class="cap-toggle-name">{cap.name}</span>
+                      <span class="cap-toggle-meta">{cap.affected_layers.length}L / {(cap.confidence * 100).toFixed(0)}%</span>
+                    </button>
+                  {/each}
+                </div>
+                {#if dna.disabledLayers.length > 0}
+                  <div class="cap-impact">
+                    <span class="label-xs" style="color: var(--danger);">{dna.disabledLayers.length} LAYERS EXCLUDED</span>
+                  </div>
+                {/if}
               </div>
             {/if}
 
@@ -651,7 +674,7 @@
                   class="layer-row"
                   class:layer-row-empty={!assignment}
                   class:layer-row-highlight={dna.hoveredLayer?.layerIndex === idx}
-                  onmouseenter={() => dna.hoveredLayer = { parentId: assignedParent?.id ?? firstParent?.id ?? null, layerIndex: idx }}
+                  onmouseenter={(e) => { mouseX = e.clientX; mouseY = e.clientY; dna.hoveredLayer = { parentId: assignedParent?.id ?? firstParent?.id ?? null, layerIndex: idx }; }}
                   onmouseleave={() => dna.hoveredLayer = null}
                 >
                   <span class="layer-idx-label">{idx}</span>
@@ -710,8 +733,23 @@
         <!-- ── Tab: SETTINGS ───────────────────────────── -->
         {:else if dna.activeTab === "settings"}
           <div class="tab-content">
+            <!-- Presets -->
+            <span class="divider-label">PRESETS</span>
+            <div class="preset-grid">
+              {#each MERGE_PRESETS as preset}
+                <button
+                  class="preset-card"
+                  class:preset-active={dna.activePresetId === preset.id}
+                  onclick={() => dna.applyPreset(preset)}
+                >
+                  <span class="preset-name">{preset.name}</span>
+                  <span class="preset-desc">{preset.desc}</span>
+                </button>
+              {/each}
+            </div>
+
             <!-- Mode -->
-            <span class="divider-label">MODE</span>
+            <span class="divider-label" style="margin-top: 12px;">MODE</span>
             <div class="mode-bar">
               {#each ["easy", "intermediate", "advanced"] as m}
                 <button class="mode-btn" class:mode-active={dna.mode === m} onclick={() => dna.mode = m as DnaMode}>
@@ -820,6 +858,19 @@
                 {dna.outputPath ? dna.outputPath.split('/').pop() : 'SELECT OUTPUT PATH'}
               </button>
             </div>
+
+            <!-- Performance -->
+            <span class="divider-label" style="margin-top: 12px;">PERFORMANCE</span>
+            <div class="param-section">
+              <div class="param-row">
+                <span class="label-xs">BATCH SIZE</span>
+                <input type="range" min="1" max="16" step="1" value={dna.mergeBatchSize}
+                  oninput={(e) => dna.mergeBatchSize = parseInt(e.currentTarget.value)}
+                  class="range-input" />
+                <span class="code-sm">{dna.mergeBatchSize}</span>
+              </div>
+              <span class="label-xs" style="color: var(--text-muted);">TENSORS TO PROCESS CONCURRENTLY. HIGHER = FASTER, MORE RAM.</span>
+            </div>
           </div>
         {/if}
       </div>
@@ -911,6 +962,66 @@
       {/if}
     </div>
   {/if}
+
+  <!-- ── Global floating tooltip (follows mouse everywhere) ── -->
+  {#if dna.hoveredLayer && (tooltipData || tooltipAnalysis)}
+    {@const hov = dna.hoveredLayer}
+    {@const td = tooltipData}
+    {@const ta = tooltipAnalysis}
+    {@const tp = tooltipParent}
+    <div class="iso-tooltip" style="left: {mouseX + 16}px; top: {mouseY - 16}px;">
+      <div class="iso-tooltip-bar" style="background: {ta?.color ?? tp?.color ?? 'var(--accent)'};"></div>
+      <div class="iso-tooltip-header">
+        <span class="iso-tooltip-type">{tp ? tp.name.slice(0, 14) : 'OFFSPRING'}</span>
+        <span class="heading-sm">LAYER {hov.layerIndex}</span>
+      </div>
+      <div class="iso-tooltip-body">
+        {#if ta}
+          <div class="iso-tooltip-cat" style="background: {ta.color}20; border-color: {ta.color}60;">
+            <span class="iso-tooltip-cat-label" style="color: {ta.color};">{ta.label}</span>
+            <span class="iso-tooltip-cat-desc">{ta.description}</span>
+          </div>
+          <div class="iso-tooltip-row">
+            <span class="label-xs">CONFIDENCE</span>
+            <span class="code" style="color: {ta.color};">{(ta.confidence * 100).toFixed(0)}%</span>
+          </div>
+          <div class="iso-tooltip-sep"></div>
+        {/if}
+        {#if td}
+          <div class="iso-tooltip-row">
+            <span class="label-xs">TENSORS</span>
+            <span class="code">{td.totalTensors}</span>
+          </div>
+          <div class="iso-tooltip-sep"></div>
+          <div class="iso-tooltip-row">
+            <span class="label-xs" style="color: var(--info);">ATTENTION</span>
+            <span class="code">{td.attn.length}</span>
+          </div>
+          <div class="iso-tooltip-row">
+            <span class="label-xs" style="color: var(--success);">MLP</span>
+            <span class="code">{td.mlp.length}</span>
+          </div>
+          {#if td.norm.length > 0}
+            <div class="iso-tooltip-row">
+              <span class="label-xs" style="color: var(--gray);">NORMS</span>
+              <span class="code">{td.norm.length}</span>
+            </div>
+          {/if}
+        {/if}
+        {#if ta}
+          <div class="iso-tooltip-sep"></div>
+          <div class="iso-tooltip-row">
+            <span class="label-xs">MLP DOM.</span>
+            <span class="code">{(ta.mlp_dominance * 100).toFixed(0)}%</span>
+          </div>
+          <div class="iso-tooltip-row">
+            <span class="label-xs">NORM L2</span>
+            <span class="code">{ta.norm_l2.toFixed(2)}</span>
+          </div>
+        {/if}
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -963,6 +1074,23 @@
   .iso-slab { cursor: pointer; transition: opacity 200ms ease; }
   .iso-dimmed { opacity: 0.15; }
   .iso-unassigned { opacity: 0.25; cursor: default; }
+
+  .iso-tower-label {
+    font-size: 7px;
+    font-weight: 700;
+    fill: var(--text-muted);
+    letter-spacing: 0.15em;
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+  }
+  .iso-tower-count {
+    font-size: 5px;
+    font-weight: 600;
+    fill: var(--text-muted);
+    letter-spacing: 0.1em;
+    font-family: var(--font-mono);
+    opacity: 0.6;
+  }
 
   .iso-empty {
     display: flex;
@@ -1178,6 +1306,17 @@
   .mode-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
   .mode-active { background: var(--on-accent); color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
 
+  .preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px; }
+  .preset-card {
+    padding: 8px 6px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--text-primary);
+    cursor: pointer; transition: all var(--transition); display: flex; flex-direction: column; gap: 3px;
+    align-items: center; text-align: center;
+  }
+  .preset-card:hover { border-color: var(--accent); background: var(--bg-hover); }
+  .preset-active { border-color: var(--accent); background: var(--on-accent); box-shadow: inset 0 -2px 0 var(--accent); }
+  .preset-name { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; font-family: var(--font-mono); }
+  .preset-desc { font-size: 7px; color: var(--text-muted); letter-spacing: 0.02em; line-height: 1.3; font-family: var(--font-mono); }
+
   .method-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 4px; }
   .method-btn {
     padding: 7px 5px; background: var(--bg-inset); border: 1px solid var(--border); color: var(--text-primary);
@@ -1242,6 +1381,85 @@
   /* ── Result ────────────────────────────────── */
   .result-panel { padding: 12px; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--success); }
   .result-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 6px; border-bottom: 1px solid var(--border-dim); }
+
+  /* ── Dimension Analysis ────────────────────── */
+  .dim-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 4px;
+  }
+  .dim-item {
+    padding: 4px 6px;
+    border: 1px solid var(--border-dim);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .dim-error { border-color: var(--danger); }
+  .dim-warn { border-color: var(--accent); }
+  .dim-values {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .strat-item {
+    padding: 4px 6px;
+    border: 1px solid var(--border-dim);
+    margin-bottom: 3px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .strat-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .badge-accent { background: var(--accent); color: var(--bg-primary); }
+
+  /* ── Capability filter ──────────────────────── */
+  .cap-filter-section {
+    margin-top: 6px;
+  }
+  .cap-toggle-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 4px;
+    margin-top: 4px;
+  }
+  .cap-toggle {
+    display: flex;
+    flex-direction: column;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+    font-family: var(--font-mono);
+  }
+  .cap-toggle:hover { border-color: var(--accent); }
+  .cap-on { border-color: var(--accent); }
+  .cap-on .cap-toggle-name { color: var(--accent); }
+  .cap-off { opacity: 0.5; }
+  .cap-off .cap-toggle-name { text-decoration: line-through; color: var(--text-muted); }
+  .cap-toggle-name {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+  }
+  .cap-toggle-meta {
+    font-size: 8px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+  .cap-impact {
+    margin-top: 4px;
+    padding: 3px 6px;
+    border: 1px solid var(--danger);
+  }
 
   /* ── Responsive ────────────────────────────── */
   @media (max-width: 900px) {

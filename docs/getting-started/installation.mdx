@@ -16,11 +16,11 @@ description: "System requirements and how to install ForgeAI"
     - **RAM**: 16 GB+
     - **GPU**: NVIDIA (CUDA), AMD (Vulkan), or Apple Silicon (Metal)
     - **Disk**: SSD with 50 GB+ free
-    - **Python 3.10+** for SafeTensors conversion
+    - **Python 3.10+** for Training & Convert
   </Card>
 </CardGroup>
 
-## Install
+## Install from Release
 
 <Steps>
   <Step title="Download the release">
@@ -42,32 +42,63 @@ description: "System requirements and how to install ForgeAI"
   </Step>
 </Steps>
 
+## Build from Source
+
+<Steps>
+  <Step title="Install prerequisites">
+    - [Rust](https://rustup.rs/) (latest stable)
+    - [Node.js](https://nodejs.org/) (v20+)
+    - [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/) for your OS
+  </Step>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/siddhesh2377/ForgeAi.git
+    cd ForgeAi
+    npm install
+    ```
+  </Step>
+  <Step title="Run in development mode">
+    ```bash
+    npm run tauri dev
+    ```
+  </Step>
+  <Step title="Build for production">
+    ```bash
+    npm run tauri build
+    ```
+    The compiled binary will be in `src-tauri/target/release/`.
+  </Step>
+</Steps>
+
 ## Optional: GPU Setup
 
-For accelerated inference and conversion, install GPU drivers:
+For accelerated inference and training:
 
 <Tabs>
   <Tab title="NVIDIA (CUDA)">
     1. Install NVIDIA drivers (515+ recommended)
     2. CUDA toolkit is bundled with llama.cpp — no separate install needed
     3. In ForgeAI Settings, install llama.cpp with the **CUDA** variant
+    4. For training, CUDA 11.8+ is required (PyTorch auto-detects during setup)
   </Tab>
   <Tab title="AMD / Intel (Vulkan)">
     1. Install Vulkan drivers for your GPU
     2. In ForgeAI Settings, install llama.cpp with the **Vulkan** variant
+    3. Training is CPU-only on AMD/Intel (PyTorch CUDA not available)
   </Tab>
   <Tab title="Apple Silicon (Metal)">
     1. Metal is built into macOS — no extra drivers needed
     2. In ForgeAI Settings, install llama.cpp with the default variant
+    3. Training uses MPS (Metal Performance Shaders) automatically
   </Tab>
   <Tab title="CPU Only">
     No extra setup needed. In ForgeAI Settings, install llama.cpp with the **CPU** variant.
   </Tab>
 </Tabs>
 
-## Optional: Python (for Convert module)
+## Optional: Python (for Training & Convert)
 
-The Convert module (SafeTensors → GGUF) requires Python 3.10+.
+Both the **Training** module and **Convert** module require Python 3.10+. Each uses its own isolated virtual environment.
 
 <Steps>
   <Step title="Verify Python">
@@ -77,6 +108,13 @@ The Convert module (SafeTensors → GGUF) requires Python 3.10+.
     If not installed, get it from [python.org](https://python.org) or your package manager.
   </Step>
   <Step title="Auto-setup in ForgeAI">
-    Navigate to the Convert module. ForgeAI will detect Python and prompt you to install dependencies (virtual environment with `transformers`, `torch`, etc.). This is a one-time setup (~500 MB).
+    Navigate to the Training or Convert module. ForgeAI will detect Python and prompt you to install dependencies. Each environment is a one-time setup:
+
+    | Environment | Size | Packages |
+    |-------------|------|----------|
+    | Training | ~2 GB | PyTorch, Transformers, PEFT, TRL, BitsAndBytes |
+    | Convert | ~500 MB | Transformers, Torch, SafeTensors, SentencePiece |
+
+    You can also manage both environments from **Settings** (07).
   </Step>
 </Steps>

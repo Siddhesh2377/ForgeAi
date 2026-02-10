@@ -1,9 +1,12 @@
+pub mod capabilities;
 pub mod compatibility;
 pub mod config;
 pub mod executor;
 pub mod methods;
 pub mod output;
 pub mod planner;
+pub mod precompute;
 pub mod profiler;
+pub mod projections;
 pub mod registry;
 pub mod tensor_io;

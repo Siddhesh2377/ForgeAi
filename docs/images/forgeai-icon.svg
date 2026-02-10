@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Background: dark square, sharp corners -->
+  <rect width="512" height="512" rx="64" fill="#0a0a0a"/>
+
+  <!-- Inner border frame -->
+  <rect x="24" y="24" width="464" height="464" rx="40" fill="none" stroke="#262626" stroke-width="2"/>
+
+  <!-- Corner marks (industrial aesthetic) -->
+  <path d="M48 80 L48 48 L80 48" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="square"/>
+  <path d="M432 48 L464 48 L464 80" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="square"/>
+  <path d="M48 432 L48 464 L80 464" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="square"/>
+  <path d="M432 464 L464 464 L464 432" fill="none" stroke="#f59e0b" stroke-width="3" stroke-linecap="square"/>
+
+  <!-- Anvil body (geometric/minimal) -->
+  <!-- Base -->
+  <rect x="156" y="340" width="200" height="32" fill="#f59e0b"/>
+  <!-- Waist -->
+  <rect x="196" y="308" width="120" height="32" fill="#f59e0b"/>
+  <!-- Face (top of anvil) -->
+  <rect x="136" y="268" width="240" height="40" rx="0" fill="#f59e0b"/>
+  <!-- Horn (pointed right) -->
+  <polygon points="376,288 432,284 376,268" fill="#f59e0b"/>
+  <!-- Horn (pointed left, smaller) -->
+  <polygon points="136,268 136,288 108,284" fill="#f59e0b"/>
+
+  <!-- Hammer (diagonal, striking down) -->
+  <!-- Handle -->
+  <rect x="248" y="100" width="12" height="120" rx="2" fill="#ffffff" transform="rotate(-30 254 160)"/>
+  <!-- Head -->
+  <rect x="220" y="88" width="64" height="32" rx="2" fill="#ffffff" transform="rotate(-30 252 104)"/>
+
+  <!-- Sparks / AI neural dots -->
+  <circle cx="320" cy="200" r="6" fill="#f59e0b" opacity="0.9"/>
+  <circle cx="350" cy="170" r="4" fill="#f59e0b" opacity="0.7"/>
+  <circle cx="370" cy="210" r="3" fill="#f59e0b" opacity="0.5"/>
+  <circle cx="340" cy="230" r="5" fill="#f59e0b" opacity="0.6"/>
+
+  <!-- Spark lines (connecting dots - neural network feel) -->
+  <line x1="320" y1="200" x2="350" y2="170" stroke="#f59e0b" stroke-width="1" opacity="0.4"/>
+  <line x1="320" y1="200" x2="370" y2="210" stroke="#f59e0b" stroke-width="1" opacity="0.3"/>
+  <line x1="320" y1="200" x2="340" y2="230" stroke="#f59e0b" stroke-width="1" opacity="0.3"/>
+  <line x1="350" y1="170" x2="370" y2="210" stroke="#f59e0b" stroke-width="1" opacity="0.3"/>
+
+  <!-- "F" label in bottom area -->
+  <text x="256" y="420" text-anchor="middle" font-family="monospace" font-weight="700" font-size="32" letter-spacing="0.2em" fill="#525252">FORGEAI</text>
+</svg>

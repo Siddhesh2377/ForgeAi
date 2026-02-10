@@ -8,8 +8,10 @@ icon: "arrows-rotate"
 
 Convert SafeTensors models (HuggingFace format) to GGUF files compatible with llama.cpp, Ollama, LM Studio, and other GGUF-based runtimes.
 
+<img src="/images/light/convert.png" alt="Convert Module" />
+
 <Note>
-  Requires **Python 3.10+** and a one-time dependency setup (~500 MB).
+  Requires **Python 3.10+** and a one-time dependency setup (~500 MB). The convert environment is separate from the training environment and can be managed in [Settings](/modules/settings).
 </Note>
 
 ## First-Time Setup
@@ -56,7 +58,7 @@ File checks verify: `config.json` (required), tokenizer files, safetensors weigh
 
 <Steps>
   <Step title="Select source">
-    Pick a SafeTensors repo from the list (downloaded via Hub) or click **GO TO HUB**
+    Pick a SafeTensors repo from the list (downloaded via [Hub](/modules/hub)) or click **GO TO HUB**
   </Step>
   <Step title="Review analysis">
     Check architecture, file counts, and file checks
@@ -68,6 +70,10 @@ File checks verify: `config.json` (required), tokenizer files, safetensors weigh
     Click **CONVERT TO GGUF**, choose output location, monitor progress
   </Step>
   <Step title="Result">
-    See output path and size. Click **LOAD MODEL** to use immediately.
+    See output path and size. Click **LOAD MODEL** to use immediately in ForgeAI.
   </Step>
 </Steps>
+
+<Tip>
+  After conversion, you can quantize the GGUF output further using the [Compress](/modules/optimize) module to create smaller variants (Q4\_K\_M, Q5\_K\_M, etc.).
+</Tip>

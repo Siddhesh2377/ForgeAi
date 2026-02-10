@@ -1,14 +1,16 @@
 ---
 title: "Supported Formats"
-description: "GGUF and SafeTensors format support across all ForgeAI modules"
+description: "GGUF, SafeTensors, and dataset format support across all ForgeAI modules"
 icon: "file"
 ---
 
 # Supported Formats
 
-ForgeAI works with two primary model formats: **GGUF** and **SafeTensors**.
+ForgeAI works with two primary model formats (**GGUF** and **SafeTensors**) and four dataset formats (**JSON**, **JSONL**, **CSV**, **Parquet**).
 
-## GGUF
+## Model Formats
+
+### GGUF
 
 The **GGUF** (GPT-Generated Unified Format) is the standard format for llama.cpp and its ecosystem.
 
@@ -18,17 +20,19 @@ The **GGUF** (GPT-Generated Unified Format) is the standard format for llama.cpp
 - Used by llama.cpp, Ollama, LM Studio, KoboldCpp
 
 **ForgeAI support:**
+
 | Module | Support |
 |--------|---------|
 | Load | Single file |
-| Inspect | Full analysis |
-| Optimize | Quantize to any level |
+| Inspect | Full analysis with capabilities |
+| Compress | Quantize to any level |
 | Hub | Download from HuggingFace |
 | Convert | Output format |
+| Training | Fine-tune and surgery |
 | M-DNA | Parent and output |
 | Test | Via llama.cpp |
 
-## SafeTensors
+### SafeTensors
 
 **SafeTensors** is HuggingFace's format for storing model weights safely and efficiently.
 
@@ -39,17 +43,19 @@ The **GGUF** (GPT-Generated Unified Format) is the standard format for llama.cpp
 - Used by HuggingFace Transformers, vLLM, ExLlamaV2, MLX
 
 **ForgeAI support:**
+
 | Module | Support |
 |--------|---------|
 | Load | Single file or sharded folder |
-| Inspect | Full analysis |
-| Optimize | Not supported (convert to GGUF first) |
+| Inspect | Full analysis with capabilities |
+| Compress | Not supported (convert to GGUF first) |
 | Hub | Download from HuggingFace |
 | Convert | Input format (→ GGUF) |
+| Training | Fine-tune and surgery |
 | M-DNA | Parent and output |
 | Test | Via HuggingFace Transformers |
 
-## Folder Structure
+### Folder Structure
 
 SafeTensors models from HuggingFace typically have this structure:
 
@@ -65,7 +71,7 @@ model-name/
 └── model-00001-of-00003.safetensors  # Or sharded
 ```
 
-## Format Comparison
+### Model Format Comparison
 
 | Feature | GGUF | SafeTensors |
 |---------|------|-------------|
@@ -75,3 +81,52 @@ model-name/
 | Quantization | Native (Q2–Q8) | F16/BF16/F32 only |
 | Sharding | No | Yes |
 | Ecosystem | llama.cpp | HuggingFace |
+
+## Dataset Formats
+
+### JSON
+Array of objects in a single file.
+```json
+[
+  {"instruction": "...", "input": "...", "output": "..."},
+  {"instruction": "...", "input": "...", "output": "..."}
+]
+```
+
+### JSONL
+One JSON object per line (JSON Lines format).
+```
+{"instruction": "...", "input": "...", "output": "..."}
+{"instruction": "...", "input": "...", "output": "..."}
+```
+
+### CSV
+Comma-separated values with a header row.
+```
+instruction,input,output
+"...", "...", "..."
+```
+
+### Parquet
+Apache Parquet columnar binary format. Most HuggingFace datasets use this format. ForgeAI reads Parquet natively in Rust using Apache Arrow — no Python required.
+
+### Dataset Format Support
+
+| Module | JSON | JSONL | CSV | Parquet |
+|--------|:----:|:-----:|:---:|:-------:|
+| **DataStudio** | ✓ | ✓ | ✓ | ✓ |
+| **Training** | ✓ | ✓ | ✓ | ✓ |
+| **HuggingFace** | ✓ | ✓ | ✓ | ✓ |
+
+### Dataset Template Detection
+
+ForgeAI auto-detects these common dataset templates:
+
+| Template | Key Columns |
+|----------|-------------|
+| **Alpaca** | instruction, input, output |
+| **ShareGPT** | conversations |
+| **ChatML** | messages |
+| **DPO** | prompt, chosen, rejected |
+| **Text** | text |
+| **Prompt/Completion** | prompt, completion |

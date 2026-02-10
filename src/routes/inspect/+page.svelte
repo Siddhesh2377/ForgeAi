@@ -100,6 +100,24 @@
   let fingerprintLoading = $state(false);
   let fingerprintError = $state<string | null>(null);
 
+  // Capabilities
+  interface Capability {
+    id: string;
+    name: string;
+    detected: boolean;
+    confidence: number;
+    evidence: string[];
+    affected_layers: number[];
+  }
+  interface CapabilityReport {
+    parent_id: string;
+    parent_name: string;
+    capabilities: Capability[];
+    total_detected: number;
+  }
+  let capReport = $state<CapabilityReport | null>(null);
+  let capLoading = $state(false);
+
   // Tensor filter
   let tensorSearch = $state("");
   let dtypeFilter = $state("all");
@@ -383,6 +401,7 @@
     try {
       data = await invoke<InspectData>("inspect_model");
       loading = false;
+      loadCapabilities();
     } catch (e) {
       error = String(e);
       loading = false;
@@ -398,6 +417,17 @@
       fingerprintError = String(e);
     } finally {
       fingerprintLoading = false;
+    }
+  }
+
+  async function loadCapabilities() {
+    capLoading = true;
+    try {
+      capReport = await invoke<CapabilityReport>("inspect_capabilities");
+    } catch (e) {
+      console.error("Failed to detect capabilities:", e);
+    } finally {
+      capLoading = false;
     }
   }
 
@@ -441,6 +471,7 @@
       error = null;
       fingerprint = null;
       fingerprintError = null;
+      capReport = null;
       loadInspectData();
     }
   });
@@ -881,6 +912,54 @@
               {/each}
             </div>
           {/if}
+        </div>
+      </div>
+    {/if}
+
+    <!-- ── Capabilities ─────────────────────────────── -->
+    {#if capReport}
+      <div class="section">
+        <div class="section-label">
+          <span class="divider-label">CAPABILITIES</span>
+          <span class="label-xs" style="color: var(--text-muted); margin-left: 8px;">{capReport.total_detected} DETECTED</span>
+        </div>
+        <div class="cap-panel panel-flat">
+          <div class="cap-grid">
+            {#each capReport.capabilities as cap}
+              <div class="cap-item" class:cap-detected={cap.detected} class:cap-undetected={!cap.detected}>
+                <div class="cap-header">
+                  <span class="cap-name">{cap.name}</span>
+                  {#if cap.detected}
+                    <span class="cap-confidence">{(cap.confidence * 100).toFixed(0)}%</span>
+                  {/if}
+                </div>
+                {#if cap.detected}
+                  <div class="cap-bar-track">
+                    <div class="cap-bar-fill" style="width: {cap.confidence * 100}%"></div>
+                  </div>
+                  {#if cap.evidence.length > 0}
+                    <div class="cap-evidence">
+                      {#each cap.evidence as ev}
+                        <span class="badge badge-dim">{ev}</span>
+                      {/each}
+                    </div>
+                  {/if}
+                  {#if cap.affected_layers.length > 0}
+                    <span class="label-xs" style="color: var(--text-muted); margin-top: 2px;">LAYERS {cap.affected_layers[0]}-{cap.affected_layers[cap.affected_layers.length - 1]}</span>
+                  {/if}
+                {/if}
+              </div>
+            {/each}
+          </div>
+        </div>
+      </div>
+    {:else if capLoading}
+      <div class="section">
+        <div class="section-label">
+          <span class="divider-label">CAPABILITIES</span>
+        </div>
+        <div class="cap-panel panel-flat">
+          <span class="label-xs" style="color: var(--text-muted);">DETECTING...</span>
         </div>
       </div>
     {/if}
@@ -1862,5 +1941,63 @@
     align-items: baseline;
     gap: 8px;
     padding: 8px 10px;
+  }
+
+  /* ── Capabilities ──────────────────────────── */
+  .cap-panel {
+    padding: 10px;
+  }
+  .cap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+  }
+  .cap-item {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .cap-detected {
+    border-color: var(--accent);
+  }
+  .cap-undetected {
+    opacity: 0.4;
+  }
+  .cap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+  }
+  .cap-name {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-primary);
+  }
+  .cap-detected .cap-name {
+    color: var(--accent);
+  }
+  .cap-confidence {
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--accent);
+  }
+  .cap-bar-track {
+    height: 3px;
+    background: var(--border);
+    margin-bottom: 4px;
+  }
+  .cap-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width 0.3s ease;
+  }
+  .cap-evidence {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 2px;
   }
 </style>

@@ -30,6 +30,21 @@ export interface MergeMethodInfo {
   difficulty: string;
 }
 
+export interface DimensionMismatch {
+  dimension_name: string;
+  values: [string, number][];
+  severity: string;
+}
+
+export interface ResolutionStrategy {
+  name: string;
+  description: string;
+  applicable_to: string[];
+  estimated_size_change_bytes: number;
+  quality_estimate: string;
+  requires_training: boolean;
+}
+
 export interface CompatReport {
   compatible: boolean;
   warnings: string[];
@@ -39,6 +54,8 @@ export interface CompatReport {
   architecture_match: boolean;
   dimension_match: boolean;
   layer_count_match: boolean;
+  dimension_details: DimensionMismatch[];
+  resolution_strategies: ResolutionStrategy[];
 }
 
 export interface LayerProfile {
@@ -133,9 +150,43 @@ export interface AnalysisProgress {
   stage: string;
 }
 
+export interface Capability {
+  id: string;
+  name: string;
+  detected: boolean;
+  confidence: number;
+  evidence: string[];
+  affected_layers: number[];
+}
+
+export interface CapabilityReport {
+  parent_id: string;
+  parent_name: string;
+  capabilities: Capability[];
+  total_detected: number;
+}
+
 export type DnaStatus = "idle" | "loading" | "ready" | "merging" | "profiling" | "analyzing" | "error" | "complete";
 export type DnaMode = "easy" | "intermediate" | "advanced";
 export type DnaTab = "files" | "layers" | "settings";
+
+// ── Merge Presets ────────────────────────────────────────
+
+export interface MergePreset {
+  id: string;
+  name: string;
+  desc: string;
+  method: string;
+  params: Record<string, any>;
+}
+
+export const MERGE_PRESETS: MergePreset[] = [
+  { id: "quick_blend", name: "QUICK BLEND", desc: "Simple weighted average of all parents", method: "average", params: {} },
+  { id: "smooth_merge", name: "SMOOTH MERGE", desc: "SLERP interpolation at 50%", method: "slerp", params: { t: 0.5 } },
+  { id: "task_tuner", name: "TASK TUNER", desc: "Task arithmetic with 1.0 scaling", method: "task_arithmetic", params: { scaling: 1.0 } },
+  { id: "sparse_mix", name: "SPARSE MIX", desc: "DARE with 50% density", method: "dare", params: { density: 0.5 } },
+  { id: "consensus", name: "CONSENSUS", desc: "TIES with sign election + 20% trim", method: "ties", params: { trim_threshold: 0.2 } },
+];
 
 // ── Store ────────────────────────────────────────────────
 
@@ -158,6 +209,7 @@ class DnaStore {
   outputFormat = $state<"safe_tensors" | "gguf">("safe_tensors");
   outputPath = $state("");
   modelName = $state("merged-model");
+  mergeBatchSize = $state(1);
 
   // Available methods
   methods = $state<MergeMethodInfo[]>([]);
@@ -185,6 +237,10 @@ class DnaStore {
   analyzing = $state(false);
   analysisProgress = $state<AnalysisProgress | null>(null);
   categories = $state<LayerCategoryInfo[]>([]);
+
+  // Capabilities
+  capabilities = $state<Record<string, CapabilityReport>>({});
+  capabilityToggles = $state<Record<string, boolean>>({});
 
   // UI state
   activeTab = $state<DnaTab>("files");
@@ -229,6 +285,39 @@ class DnaStore {
     return this.parents.length >= 1 && !this.analyzing;
   }
 
+  get disabledLayers(): number[] {
+    const disabled = new Set<number>();
+    // Collect all affected layers from disabled capability toggles
+    for (const [capId, enabled] of Object.entries(this.capabilityToggles)) {
+      if (!enabled) {
+        // Find affected layers from all parents' capability reports
+        for (const report of Object.values(this.capabilities)) {
+          const cap = report.capabilities.find(c => c.id === capId);
+          if (cap?.detected) {
+            for (const layer of cap.affected_layers) {
+              disabled.add(layer);
+            }
+          }
+        }
+      }
+    }
+    return Array.from(disabled).sort((a, b) => a - b);
+  }
+
+  get allDetectedCapabilities(): Capability[] {
+    const seen = new Set<string>();
+    const result: Capability[] = [];
+    for (const report of Object.values(this.capabilities)) {
+      for (const cap of report.capabilities) {
+        if (cap.detected && !seen.has(cap.id)) {
+          seen.add(cap.id);
+          result.push(cap);
+        }
+      }
+    }
+    return result;
+  }
+
   get isAnalyzed(): boolean {
     return this.parents.length > 0 && this.parents.every(p => this.layerAnalysis[p.id]?.length > 0);
   }
@@ -265,6 +354,22 @@ class DnaStore {
       parent_id: p.id,
       weight: equalWeight,
     }));
+  }
+
+  get activePresetId(): string | null {
+    for (const preset of MERGE_PRESETS) {
+      if (preset.method !== this.selectedMethod) continue;
+      const paramKeys = Object.keys(preset.params);
+      if (paramKeys.length === 0 && Object.keys(this.methodParams).length === 0) return preset.id;
+      const match = paramKeys.every(k => this.methodParams[k] === preset.params[k]);
+      if (match) return preset.id;
+    }
+    return null;
+  }
+
+  applyPreset(preset: MergePreset) {
+    this.selectedMethod = preset.method;
+    this.methodParams = { ...preset.params };
   }
 
   // ── Actions ──────────────────────────────────────────
@@ -306,6 +411,26 @@ class DnaStore {
     return analyses.find(a => a.layer_index === layerIndex) ?? null;
   }
 
+  async detectCapabilities(parentId: string) {
+    try {
+      const report = await invoke<CapabilityReport>("merge_detect_capabilities", { parentId });
+      this.capabilities = { ...this.capabilities, [parentId]: report };
+      // Initialize all toggles to ON by default
+      for (const cap of report.capabilities) {
+        if (cap.detected && !(cap.id in this.capabilityToggles)) {
+          this.capabilityToggles = { ...this.capabilityToggles, [cap.id]: true };
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to detect capabilities for ${parentId}:`, e);
+    }
+  }
+
+  toggleCapability(capId: string) {
+    const current = this.capabilityToggles[capId] ?? true;
+    this.capabilityToggles = { ...this.capabilityToggles, [capId]: !current };
+  }
+
   async init() {
     try {
       this.methods = await invoke<MergeMethodInfo[]>("merge_get_methods");
@@ -313,6 +438,7 @@ class DnaStore {
       this.parents = existing;
       for (const p of existing) {
         this.fetchLayerComponents(p.id);
+        this.detectCapabilities(p.id);
       }
       if (existing.length >= 2) {
         this.status = "ready";
@@ -348,6 +474,7 @@ class DnaStore {
 
       this.parents = [...this.parents, parent];
       this.fetchLayerComponents(parent.id);
+      this.detectCapabilities(parent.id);
 
       if (this.parents.length >= 2) {
         this.status = "ready";
@@ -383,6 +510,7 @@ class DnaStore {
 
       this.parents = [...this.parents, parent];
       this.fetchLayerComponents(parent.id);
+      this.detectCapabilities(parent.id);
 
       if (this.parents.length >= 2) {
         this.status = "ready";
@@ -407,6 +535,8 @@ class DnaStore {
       this.layerComponents = rest;
       const { [id]: _a, ...restAnalysis } = this.layerAnalysis;
       this.layerAnalysis = restAnalysis;
+      const { [id]: _c, ...restCaps } = this.capabilities;
+      this.capabilities = restCaps;
       if (this.baseParentId === id) this.baseParentId = null;
       if (this.parents.length >= 2) {
         await this.checkCompatibility();
@@ -525,6 +655,12 @@ class DnaStore {
       );
     }
 
+    let memoryLimitMb: number | null = null;
+    try {
+      const saved = await invoke<{ memory_limit_mb: number | null }>("load_settings");
+      memoryLimitMb = saved.memory_limit_mb ?? null;
+    } catch {}
+
     const config = {
       parents: this.parentWeights,
       method: this.selectedMethod,
@@ -541,6 +677,9 @@ class DnaStore {
         path: this.outputPath,
         model_name: this.modelName,
       },
+      memory_limit_mb: memoryLimitMb,
+      skip_layers: this.disabledLayers,
+      batch_size: this.mergeBatchSize,
     };
 
     // Fire-and-forget: don't block the UI on the merge result.
@@ -705,6 +844,8 @@ class DnaStore {
     this.preview = null;
     this.hoveredLayer = null;
     this.analysisProgress = null;
+    this.capabilities = {};
+    this.capabilityToggles = {};
   }
 
   destroy() {

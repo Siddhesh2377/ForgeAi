@@ -6,7 +6,9 @@ icon: "cloud-arrow-down"
 
 # Hub (04)
 
-Download models from HuggingFace and manage a local library.
+Download models from HuggingFace and manage a local library. Search by repository ID, download individual files or entire repos, and import existing local models.
+
+<img src="/images/light/hub-light.png" alt="Hub Search" />
 
 ## Views
 
@@ -23,6 +25,8 @@ Download models from HuggingFace and manage a local library.
     Progress panel shows real-time status: file name, bytes, percentage. Downloads can be cancelled.
   </Tab>
   <Tab title="Library">
+    <img src="/images/light/hub-lib-light.png" alt="Hub Library" />
+
     Manage locally downloaded models:
 
     - Each model card: name, format badge, size, source repo, download date
@@ -62,3 +66,7 @@ Download models from HuggingFace and manage a local library.
     Model is now available across all modules
   </Step>
 </Steps>
+
+<Tip>
+  Downloaded models from the Hub are automatically available in the **Test** module's local library chips and in the **Convert** module's repository selector.
+</Tip>

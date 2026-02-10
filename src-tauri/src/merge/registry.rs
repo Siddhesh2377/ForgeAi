@@ -6,6 +6,13 @@ use crate::model::{ModelFormat, ModelInfo};
 const MAX_PARENTS: usize = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TensorMeta {
+    pub name: String,
+    pub shape: Vec<usize>,
+    pub dtype: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompatInfo {
     pub architecture: Option<String>,
     pub hidden_size: Option<u64>,
@@ -14,12 +21,27 @@ pub struct CompatInfo {
     pub num_kv_heads: Option<u64>,
     pub vocab_size: Option<u64>,
     pub context_length: Option<u64>,
-    pub tensor_names: Vec<String>,
+    pub tensor_metas: Vec<TensorMeta>,
 }
 
 impl CompatInfo {
+    pub fn tensor_names(&self) -> Vec<String> {
+        self.tensor_metas.iter().map(|t| t.name.clone()).collect()
+    }
+
+    pub fn tensor_shape(&self, name: &str) -> Option<&[usize]> {
+        self.tensor_metas
+            .iter()
+            .find(|t| t.name == name)
+            .map(|t| t.shape.as_slice())
+    }
+
     pub fn from_model_info(info: &ModelInfo) -> Self {
-        let tensor_names: Vec<String> = info.all_tensors.iter().map(|t| t.name.clone()).collect();
+        let tensor_metas: Vec<TensorMeta> = info.all_tensors.iter().map(|t| TensorMeta {
+            name: t.name.clone(),
+            shape: t.shape.iter().map(|&d| d as usize).collect(),
+            dtype: t.dtype.clone(),
+        }).collect();
 
         let arch = info.architecture.clone();
         let hidden_size = info.embedding_size;
@@ -55,7 +77,7 @@ impl CompatInfo {
             num_kv_heads,
             vocab_size,
             context_length,
-            tensor_names,
+            tensor_metas,
         }
     }
 }
@@ -162,11 +184,11 @@ impl ParentRegistry {
             return HashSet::new();
         }
 
-        let first: HashSet<&String> = self.parents[0].compat.tensor_names.iter().collect();
-        let mut shared: HashSet<String> = first.into_iter().cloned().collect();
+        let first: HashSet<String> = self.parents[0].compat.tensor_metas.iter().map(|t| t.name.clone()).collect();
+        let mut shared: HashSet<String> = first;
 
         for parent in &self.parents[1..] {
-            let names: HashSet<&String> = parent.compat.tensor_names.iter().collect();
+            let names: HashSet<String> = parent.compat.tensor_metas.iter().map(|t| t.name.clone()).collect();
             shared.retain(|n| names.contains(n));
         }
 

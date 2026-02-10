@@ -1,14 +1,16 @@
 ---
 title: "Merge Methods"
-description: "Detailed guide to all merge methods available in M-DNA Forge"
+description: "Detailed guide to all 12 merge methods available in M-DNA Forge"
 icon: "dna"
 ---
 
 # Merge Methods
 
-M-DNA Forge supports 8 merge strategies, each suited to different scenarios.
+M-DNA Forge supports 12 merge strategies, each suited to different scenarios. Methods are organized by difficulty level.
 
-## SLERP
+## Easy Methods
+
+### SLERP
 
 **Spherical Linear Interpolation** — the recommended method for merging 2 models.
 
@@ -20,7 +22,7 @@ SLERP interpolates on the hypersphere rather than linearly, which preserves the 
 
 **Best for:** 2 models with similar architecture and training data.
 
-## Average
+### Average
 
 **Weighted Mean** — simplest merge, averages all tensors by weight.
 
@@ -32,15 +34,29 @@ Weights are normalized to sum to 1.0 automatically.
 
 **Best for:** Very similar models (e.g., same model at different training checkpoints).
 
-## Passthrough
+### Passthrough
 
-**Layer Stacking** — concatenates layers from parents sequentially.
+**Direct Copy** — copies tensors directly from a single parent.
 
-Creates a larger model by stacking all layers from each parent. No layer assignments needed — all layers from parent A come first, then parent B.
+Useful as a starting point or for simple layer stacking.
 
-**Best for:** Creating deeper models from compatible architectures.
+**Best for:** Creating deeper models or debugging merge pipelines.
 
-## Frankenmerge
+## Intermediate Methods
+
+### Task Arithmetic
+
+**Task Vector Addition** — requires a base model.
+
+Computes task vectors (`finetune - base`) for each parent, scales them, and adds them back to the base.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| scaling | 0–2 | 1.0 | How strongly task vectors are applied |
+
+**Best for:** Combining multiple finetunes of the same base model.
+
+### Frankenmerge
 
 **Layer Cherry-Picking** — select which parent provides each output layer.
 
@@ -52,33 +68,9 @@ Auto-assign options:
 
 **Best for:** Combining strengths from different layers (e.g., reasoning layers from one model + language layers from another).
 
-## Task Arithmetic
+### DARE
 
-**Task Vector Addition** — requires a base model.
-
-Computes task vectors (`finetune - base`) for each parent, scales them, and adds them back to the base.
-
-| Parameter | Range | Default | Effect |
-|-----------|:-----:|:-------:|--------|
-| scaling\_factor | 0–2 | 1.0 | How strongly task vectors are applied |
-
-**Best for:** Combining multiple finetunes of the same base model.
-
-## TIES
-
-**Trim, Elect Sign, Merge** — resolves interference between task vectors.
-
-| Parameter | Range | Default | Effect |
-|-----------|:-----:|:-------:|--------|
-| density | 0–1 | 0.5 | Fraction of parameters to keep |
-
-Trims small-magnitude parameters, resolves sign conflicts by majority vote, then merges. Produces cleaner results than Task Arithmetic.
-
-**Best for:** Base + multiple finetunes where task vectors conflict.
-
-## DARE
-
-**Drop And REscale** — prunes delta parameters before merging.
+**Drop And REscale** — prunes delta parameters before merging. Requires a base model.
 
 | Parameter | Range | Default | Effect |
 |-----------|:-----:|:-------:|--------|
@@ -86,19 +78,75 @@ Trims small-magnitude parameters, resolves sign conflicts by majority vote, then
 
 Randomly drops delta parameters and rescales the remainder to maintain expected magnitude.
 
-**Best for:** Similar to TIES but with random pruning instead of magnitude-based.
+**Best for:** Efficient merging with sparsity-based parameter selection.
 
-## DeLLa
+### TIES
 
-**Density-based Layer-Level Adaptive** — adapts merge density per layer.
+**Trim, Elect Sign, Merge** — resolves interference between task vectors. Requires a base model.
 
 | Parameter | Range | Default | Effect |
 |-----------|:-----:|:-------:|--------|
-| density | 0–1 | 0.5 | Base density, adapted per layer |
+| trim\_threshold | 0–1 | 0.2 | Fraction of small-magnitude parameters to trim |
+
+Trims small-magnitude parameters, resolves sign conflicts by majority vote, then merges. Produces cleaner results than Task Arithmetic.
+
+**Best for:** Base + multiple finetunes where task vectors conflict.
+
+## Advanced Methods
+
+### DeLLa
+
+**Density-based Layer-Level Adaptive** — adapts merge density per layer. Requires a base model.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| lambda | 0–1 | 0.5 | Lambda interpolation factor |
+| della\_density | 0–1 | 0.5 | Base density, adapted per layer |
 
 Uses layer-level analysis to set different densities for different layers, giving more weight to layers that differ more.
 
 **Best for:** Advanced merges where uniform density across layers is suboptimal.
+
+### Component Merge
+
+**Per-Component Routing** — route attention, MLP, and norm components to different parents.
+
+Instead of merging at the tensor level, assign each component type (attention projections, MLP layers, normalization) to a specific parent.
+
+**Best for:** When different parents excel at different architectural components.
+
+### Tensor Surgery
+
+**Per-Tensor Source Mapping** — individually assign each tensor to a parent.
+
+Maximum control: specify exactly which parent provides each tensor in the output model.
+
+**Best for:** Expert users who need fine-grained control over every tensor.
+
+### Parameter Slice
+
+**Dimensional Slicing** — slice tensors along specific dimensions across parents.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| slice\_dim | 0+ | 0 | Dimension to slice along |
+
+Takes slices of tensor dimensions from different parents to create hybrid tensors.
+
+**Best for:** Experimental merges with dimensional composition.
+
+### MoE Conversion
+
+**Mixture-of-Experts** — convert dense models to MoE architecture.
+
+| Parameter | Range | Default | Effect |
+|-----------|:-----:|:-------:|--------|
+| num\_experts | 2–8 | 4 | Number of expert models |
+| experts\_per\_token | 1–4 | 2 | Experts active per token |
+
+Uses parent models as expert networks and creates a gating mechanism.
+
+**Best for:** Creating sparse models that route tokens to specialized experts.
 
 ## Quick Reference
 
@@ -109,4 +157,18 @@ Uses layer-level analysis to set different densities for different layers, givin
 | Base + multiple finetunes | Task Arithmetic |
 | Cherry-pick specific layers | Frankenmerge |
 | Create deeper model | Passthrough |
+| Route components separately | Component Merge |
+| Create MoE from dense | MoE Conversion |
 | Quick experiment | Average (with caution) |
+
+## Quick Presets
+
+ForgeAI includes 5 one-click presets:
+
+| Preset | Method | Params | Use Case |
+|--------|--------|--------|----------|
+| **Quick Blend** | Average | — | Fast simple merge |
+| **Smooth Merge** | SLERP | t=0.5 | Balanced 2-model blend |
+| **Task Tuner** | Task Arithmetic | scaling=1.0 | Add finetune capabilities |
+| **Sparse Mix** | DARE | density=0.5 | Efficient sparse merge |
+| **Consensus** | TIES | trim=0.2 | Resolve task conflicts |

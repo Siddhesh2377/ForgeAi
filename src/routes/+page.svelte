@@ -2,6 +2,8 @@
   import { goto } from "$app/navigation";
   import { model } from "$lib/model.svelte";
   import { dna } from "$lib/dna.svelte";
+  import { training } from "$lib/training.svelte";
+  import { datastudio } from "$lib/datastudio.svelte";
 
   function getSerial() {
     return `FRG-${String(Date.now()).slice(-6)}`;
@@ -11,6 +13,7 @@
 
   // Overall system status derived from all modules
   const sysStatus = $derived.by(() => {
+    if (training.training) return { label: "TRAINING", color: "info" };
     if (dna.merging) return { label: "MERGING", color: "info" };
     if (dna.analyzing) return { label: "ANALYZING", color: "info" };
     if (dna.profiling) return { label: "PROFILING", color: "info" };
@@ -21,78 +24,51 @@
     return { label: "IDLE", color: "accent" };
   });
 
-  const modulesDef = [
-    {
-      code: "01",
-      name: "LOAD",
-      href: "/load",
-      desc: "Import model from disk",
-      formats: "GGUF / SAFETENSORS",
-      statusWhenLoaded: "loaded",
-      statusWhenIdle: "ready",
-    },
-    {
-      code: "02",
-      name: "INSPECT",
-      href: "/inspect",
-      desc: "View architecture & tensors",
-      formats: "LAYERS / SHAPES / METADATA",
-      statusWhenLoaded: "ready",
-      statusWhenIdle: "awaiting",
-    },
-    {
-      code: "03",
-      name: "OPTIMIZE",
-      href: "/optimize",
-      desc: "Quantize & compress",
-      formats: "INT8 / INT4 / GPTQ",
-      statusWhenLoaded: "ready",
-      statusWhenIdle: "awaiting",
-    },
-    {
-      code: "04",
-      name: "HUB",
-      href: "/hub",
-      desc: "Download & manage models",
-      formats: "HUGGINGFACE / GGUF / ST",
-      statusWhenLoaded: "ready",
-      statusWhenIdle: "ready",
-    },
-    {
-      code: "05",
-      name: "CONVERT",
-      href: "/convert",
-      desc: "SafeTensors to GGUF",
-      formats: "F16 / F32 / BF16 / Q8_0",
-      statusWhenLoaded: "ready",
-      statusWhenIdle: "ready",
-    },
-    {
-      code: "08",
-      name: "M-DNA",
-      href: "/dna",
-      desc: "Merge multiple models",
-      formats: "SLERP / TIES / DARE / FRANK",
-      statusWhenLoaded: "ready",
-      statusWhenIdle: "ready",
-    },
-    {
-      code: "09",
-      name: "TEST",
-      href: "/test",
-      desc: "Run model inference",
-      formats: "GGUF / SAFETENSORS / PROMPT",
-      statusWhenLoaded: "ready",
-      statusWhenIdle: "ready",
-    },
+  interface ModuleDef {
+    code: string;
+    name: string;
+    href: string;
+    desc: string;
+    formats: string;
+    statusWhenLoaded: string;
+    statusWhenIdle: string;
+  }
+
+  const moduleGroups: { label: string; modules: ModuleDef[] }[] = [
+    { label: "MODEL", modules: [
+      { code: "01", name: "LOAD", href: "/load", desc: "Import model from disk", formats: "GGUF / SAFETENSORS", statusWhenLoaded: "loaded", statusWhenIdle: "ready" },
+      { code: "02", name: "INSPECT", href: "/inspect", desc: "View architecture & tensors", formats: "LAYERS / SHAPES / METADATA", statusWhenLoaded: "ready", statusWhenIdle: "awaiting" },
+      { code: "03", name: "COMPRESS", href: "/optimize", desc: "Quantize & compress", formats: "INT8 / INT4 / GPTQ", statusWhenLoaded: "ready", statusWhenIdle: "awaiting" },
+    ]},
+    { label: "DATA", modules: [
+      { code: "04", name: "HUB", href: "/hub", desc: "Download & manage models", formats: "HUGGINGFACE / GGUF / ST", statusWhenLoaded: "ready", statusWhenIdle: "ready" },
+      { code: "10", name: "DATASTUDIO", href: "/datastudio", desc: "Explore & prepare datasets", formats: "JSON / JSONL / CSV / PARQUET", statusWhenLoaded: "ready", statusWhenIdle: "ready" },
+      { code: "06", name: "TRAINING", href: "/training", desc: "Fine-tune & layer surgery", formats: "LORA / QLORA / SFT / DPO", statusWhenLoaded: "ready", statusWhenIdle: "ready" },
+    ]},
+    { label: "TOOLS", modules: [
+      { code: "05", name: "CONVERT", href: "/convert", desc: "SafeTensors to GGUF", formats: "F16 / F32 / BF16 / Q8_0", statusWhenLoaded: "ready", statusWhenIdle: "ready" },
+      { code: "08", name: "M-DNA", href: "/dna", desc: "Merge multiple models", formats: "SLERP / TIES / DARE / FRANK", statusWhenLoaded: "ready", statusWhenIdle: "ready" },
+      { code: "09", name: "TEST", href: "/test", desc: "Run model inference", formats: "GGUF / SAFETENSORS / PROMPT", statusWhenLoaded: "ready", statusWhenIdle: "ready" },
+    ]},
   ];
 
-  const modules = $derived(
-    modulesDef.map((m) => ({
-      ...m,
-      status: model.isLoaded ? m.statusWhenLoaded : m.statusWhenIdle,
-    }))
-  );
+  // Live activity status per module code
+  const moduleActivity = $derived.by(() => {
+    const act: Record<string, { label: string; color: string; active: boolean }> = {};
+    if (training.training) act["06"] = { label: `TRAINING ${Math.round(training.progress?.percent ?? 0)}%`, color: "info", active: true };
+    else if (training.surgeryRunning) act["06"] = { label: "SURGERY", color: "info", active: true };
+    if (dna.merging) act["08"] = { label: `MERGING ${Math.round(dna.mergeProgress?.percent ?? 0)}%`, color: "info", active: true };
+    else if (dna.analyzing) act["08"] = { label: "ANALYZING", color: "info", active: true };
+    else if (dna.status === "complete") act["08"] = { label: "COMPLETE", color: "success", active: false };
+    if (datastudio.loading) act["10"] = { label: "LOADING", color: "info", active: true };
+    else if (datastudio.dataset) act["10"] = { label: `${datastudio.dataset.rows.toLocaleString()} ROWS`, color: "success", active: false };
+    if (model.status === "loading") act["01"] = { label: "LOADING", color: "info", active: true };
+    return act;
+  });
+
+  function getModuleStatus(mod: ModuleDef): string {
+    return model.isLoaded ? mod.statusWhenLoaded : mod.statusWhenIdle;
+  }
 
   const specs = $derived([
     { label: "STATUS", value: sysStatus.label, color: sysStatus.color },
@@ -211,46 +187,57 @@
   {/if}
 
   <!-- ── Module Grid ─────────────────────────────── -->
-  <div class="section-header">
-    <span class="divider-label">AVAILABLE MODULES</span>
-  </div>
+  {#each moduleGroups as group}
+    <div class="section-header">
+      <span class="divider-label">{group.label}</span>
+    </div>
 
-  <div class="module-grid">
-    {#each modules as mod}
-      {#if mod.status === "awaiting"}
-        <div class="module-card panel-flat">
-          <div class="module-header">
-            <span class="module-code">{mod.code}</span>
-            <span class="module-name">{mod.name}</span>
-            <span class="dot"></span>
+    <div class="module-grid">
+      {#each group.modules as mod}
+        {@const status = getModuleStatus(mod)}
+        {@const activity = moduleActivity[mod.code]}
+        {#if status === "awaiting"}
+          <div class="module-card panel-flat">
+            <div class="module-header">
+              <span class="module-code">{mod.code}</span>
+              <span class="module-name">{mod.name}</span>
+              <span class="dot"></span>
+            </div>
+            <p class="module-desc">{mod.desc}</p>
+            <div class="module-footer">
+              <span class="label-xs">{mod.formats}</span>
+            </div>
+            <div class="module-overlay">
+              <span class="danger-text">REQUIRES MODEL</span>
+            </div>
           </div>
-          <p class="module-desc">{mod.desc}</p>
-          <div class="module-footer">
-            <span class="label-xs">{mod.formats}</span>
-          </div>
-          <div class="module-overlay">
-            <span class="danger-text">REQUIRES MODEL</span>
-          </div>
-        </div>
-      {:else}
-        <a class="module-card module-ready panel-flat" href={mod.href}>
-          <div class="module-header">
-            <span class="module-code">{mod.code}</span>
-            <span class="module-name">{mod.name}</span>
-            {#if mod.status === "loaded"}
-              <span class="dot dot-success"></span>
-            {:else}
-              <span class="dot dot-active"></span>
+        {:else}
+          <a class="module-card module-ready panel-flat" href={mod.href}>
+            <div class="module-header">
+              <span class="module-code">{mod.code}</span>
+              <span class="module-name">{mod.name}</span>
+              {#if activity}
+                <span class="dot" class:dot-working={activity.active} class:dot-success={activity.color === "success"}></span>
+              {:else if status === "loaded"}
+                <span class="dot dot-success"></span>
+              {:else}
+                <span class="dot dot-active"></span>
+              {/if}
+            </div>
+            <p class="module-desc">{mod.desc}</p>
+            {#if activity}
+              <div class="module-activity">
+                <span class="label-xs" style="color: var(--{activity.color});">{activity.label}</span>
+              </div>
             {/if}
-          </div>
-          <p class="module-desc">{mod.desc}</p>
-          <div class="module-footer">
-            <span class="label-xs">{mod.formats}</span>
-          </div>
-        </a>
-      {/if}
-    {/each}
-  </div>
+            <div class="module-footer">
+              <span class="label-xs">{mod.formats}</span>
+            </div>
+          </a>
+        {/if}
+      {/each}
+    </div>
+  {/each}
 
   <!-- ── System Info ─────────────────────────────── -->
   <div class="section-header">
@@ -282,6 +269,7 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
+    min-height: 100%;
   }
 
   /* ── Hero ──────────────────────────────────────── */
@@ -466,6 +454,12 @@
     margin-top: auto;
     padding-top: 6px;
     border-top: 1px solid var(--border-dim);
+  }
+
+  .module-activity {
+    padding: 2px 0;
+    font-size: 10px;
+    letter-spacing: 0.06em;
   }
 
   .module-overlay {

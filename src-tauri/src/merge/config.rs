@@ -187,6 +187,18 @@ pub struct MergeConfig {
     pub component_overrides: Vec<ComponentOverride>,
     pub tensor_overrides: Vec<TensorOverride>,
     pub output: OutputConfig,
+    #[serde(default)]
+    pub memory_limit_mb: Option<u64>,
+    #[serde(default)]
+    pub projection_strategy: Option<String>,
+    #[serde(default)]
+    pub skip_layers: Vec<u64>,
+    #[serde(default = "default_batch_size")]
+    pub batch_size: usize,
+}
+
+fn default_batch_size() -> usize {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

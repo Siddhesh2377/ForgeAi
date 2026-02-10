@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { theme, type ThemeMode, type LayoutMode } from "$lib/theme.svelte";
+  import { theme, FONT_FAMILIES, type ThemeMode, type FontFamily, type FontSize } from "$lib/theme.svelte";
 
   interface GpuInfo {
     has_nvidia: boolean;
@@ -26,16 +26,31 @@
     { id: "light", label: "LIGHT" },
   ];
 
-  const layouts: { id: LayoutMode; label: string; desc: string }[] = [
-    { id: "stretched", label: "STRETCHED", desc: "Full width content" },
-    { id: "centered", label: "CENTERED", desc: "Constrained width" },
-  ];
+  const FONT_SIZES: FontSize[] = [10, 11, 12, 13, 14];
 
   const VARIANTS = [
     { id: "cpu", label: "CPU", desc: "Universal, no GPU acceleration" },
     { id: "cuda", label: "CUDA", desc: "NVIDIA GPU acceleration" },
     { id: "vulkan", label: "VULKAN", desc: "Cross-platform GPU (AMD/NVIDIA/Intel)" },
   ];
+
+  interface SystemInfo {
+    total_ram_mb: number;
+    available_ram_mb: number;
+    used_ram_mb: number;
+    cpu_name: string;
+    cpu_cores: number;
+    cpu_threads: number;
+  }
+
+  interface AppSettings {
+    memory_limit_mb: number | null;
+  }
+
+  // ── System Info State ──────────────────────────────
+  let sysInfo = $state<SystemInfo | null>(null);
+  let sysInfoLoading = $state(true);
+  let memoryLimitMb = $state(2000);
 
   // ── GPU & Tools State ────────────────────────────
   let gpu = $state<GpuInfo | null>(null);
@@ -47,6 +62,41 @@
   let downloading = $state(false);
   let downloadError = $state<string | null>(null);
   let removing = $state(false);
+
+  // ── Convert Environment State ────────────────────
+  interface ConvertDepsStatus {
+    python_found: boolean;
+    python_version: string | null;
+    python_path: string | null;
+    venv_ready: boolean;
+    script_ready: boolean;
+    packages_ready: boolean;
+    missing_packages: string[];
+    ready: boolean;
+  }
+
+  let convertDeps = $state<ConvertDepsStatus | null>(null);
+  let convertDepsLoading = $state(true);
+  let convertCleaning = $state(false);
+  let convertCleanError = $state<string | null>(null);
+
+  // ── Training Environment State ────────────────────
+  interface TrainingDepsStatus {
+    python_found: boolean;
+    python_version: string | null;
+    venv_ready: boolean;
+    packages_ready: boolean;
+    missing_packages: string[];
+    cuda_available: boolean;
+    cuda_version: string | null;
+    torch_version: string | null;
+    ready: boolean;
+  }
+
+  let trainingDeps = $state<TrainingDepsStatus | null>(null);
+  let trainingDepsLoading = $state(true);
+  let trainingCleaning = $state(false);
+  let trainingCleanError = $state<string | null>(null);
 
   async function loadGpuInfo() {
     try {
@@ -94,9 +144,84 @@
     }
   }
 
+  async function loadTrainingDeps() {
+    trainingDepsLoading = true;
+    try {
+      trainingDeps = await invoke<TrainingDepsStatus>("training_check_deps");
+    } catch (e) {
+      console.error("Training deps check failed:", e);
+    } finally {
+      trainingDepsLoading = false;
+    }
+  }
+
+  async function handleCleanTraining() {
+    trainingCleaning = true;
+    trainingCleanError = null;
+    try {
+      await invoke("training_clean_env");
+      await loadTrainingDeps();
+    } catch (e) {
+      trainingCleanError = String(e);
+    } finally {
+      trainingCleaning = false;
+    }
+  }
+
+  async function loadConvertDeps() {
+    convertDepsLoading = true;
+    try {
+      convertDeps = await invoke<ConvertDepsStatus>("convert_check_deps");
+    } catch (e) {
+      console.error("Convert deps check failed:", e);
+    } finally {
+      convertDepsLoading = false;
+    }
+  }
+
+  async function handleCleanConvert() {
+    convertCleaning = true;
+    convertCleanError = null;
+    try {
+      await invoke("convert_clean_env");
+      await loadConvertDeps();
+    } catch (e) {
+      convertCleanError = String(e);
+    } finally {
+      convertCleaning = false;
+    }
+  }
+
+  async function loadSystemInfo() {
+    try {
+      sysInfo = await invoke<SystemInfo>("get_system_info");
+      const saved = await invoke<AppSettings>("load_settings");
+      if (saved.memory_limit_mb) {
+        memoryLimitMb = saved.memory_limit_mb;
+      } else if (sysInfo) {
+        memoryLimitMb = Math.max(200, Math.round((sysInfo.total_ram_mb * 0.5) / 200) * 200);
+      }
+    } catch (e) {
+      console.error("System info failed:", e);
+    } finally {
+      sysInfoLoading = false;
+    }
+  }
+
+  async function saveMemoryLimit() {
+    try {
+      await invoke("save_settings", { settings: { memory_limit_mb: memoryLimitMb } });
+    } catch (e) {
+      console.error("Settings save failed:", e);
+    }
+  }
+
   $effect(() => {
     loadGpuInfo();
     loadToolsStatus();
+    loadSystemInfo();
+    loadTrainingDeps();
+    loadConvertDeps();
   });
 </script>
 
@@ -145,36 +270,124 @@
     </div>
   </div>
 
-  <!-- ── Layout Toggle ──────────────────────────── -->
+  <!-- ── Font Family ──────────────────────────────── -->
   <div class="section">
     <div class="section-label">
-      <span class="divider-label">LAYOUT</span>
+      <span class="divider-label">FONT FAMILY</span>
     </div>
 
-    <div class="mode-grid">
-      {#each layouts as lay}
+    <div class="font-grid">
+      {#each FONT_FAMILIES as font}
         <button
-          class="mode-card"
-          class:mode-active={theme.layout === lay.id}
-          onclick={() => theme.setLayout(lay.id)}
+          class="font-card"
+          class:font-active={theme.fontFamily === font.id}
+          onclick={() => theme.setFontFamily(font.id)}
         >
-          <div class="layout-preview" class:layout-preview-stretched={lay.id === "stretched"}>
-            <div class="layout-preview-bar"></div>
-            <div class="layout-preview-body">
-              <div class="layout-preview-sidebar"></div>
-              <div class="layout-preview-content">
-                <div class="layout-preview-block"></div>
-              </div>
-            </div>
-          </div>
-          <div class="mode-info">
-            <span class="mode-name">{lay.label}</span>
-            {#if theme.layout === lay.id}
-              <span class="dot dot-active"></span>
-            {/if}
-          </div>
+          <span class="font-preview" style="font-family: {font.css};">Aa 0123</span>
+          <span class="font-name">{font.name}</span>
+          {#if theme.fontFamily === font.id}
+            <span class="dot dot-active"></span>
+          {/if}
         </button>
       {/each}
+    </div>
+  </div>
+
+  <!-- ── Font Size ───────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">FONT SIZE</span>
+    </div>
+
+    <div class="fontsize-row">
+      {#each FONT_SIZES as size}
+        <button
+          class="fontsize-btn"
+          class:fontsize-active={theme.fontSize === size}
+          onclick={() => theme.setFontSize(size)}
+        >
+          {size}px
+        </button>
+      {/each}
+      <span class="label-xs" style="margin-left: 12px; color: var(--text-muted);">
+        CURRENT: {theme.fontSize}px
+      </span>
+    </div>
+  </div>
+
+  <!-- ── System Info ───────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">SYSTEM INFO</span>
+    </div>
+
+    <div class="tools-panel panel-flat">
+      {#if sysInfoLoading}
+        <div class="tools-row">
+          <span class="label-xs" style="color: var(--info); animation: pulse 1.2s ease infinite;">READING SYSTEM...</span>
+        </div>
+      {:else if sysInfo}
+        <div class="gpu-grid">
+          <div class="gpu-cell" style="grid-column: 1 / -1;">
+            <span class="label-xs">CPU</span>
+            <span class="code">{sysInfo.cpu_name}</span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">CORES / THREADS</span>
+            <span class="code">{sysInfo.cpu_cores} / {sysInfo.cpu_threads}</span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">TOTAL RAM</span>
+            <span class="code">{(sysInfo.total_ram_mb / 1024).toFixed(1)} GB</span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">AVAILABLE RAM</span>
+            <span class="code" style="color: var(--success);">{(sysInfo.available_ram_mb / 1024).toFixed(1)} GB</span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">USED RAM</span>
+            <span class="code" style="color: var(--accent);">{(sysInfo.used_ram_mb / 1024).toFixed(1)} GB</span>
+          </div>
+        </div>
+      {:else}
+        <div class="tools-row">
+          <span class="label-xs" style="color: var(--text-muted);">SYSTEM INFO UNAVAILABLE</span>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <!-- ── RAM Allocation ──────────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">RAM ALLOCATION</span>
+    </div>
+
+    <div class="tools-panel panel">
+      <div class="ram-control">
+        <div class="ram-header">
+          <span class="label-xs">MERGE MEMORY LIMIT</span>
+          <span class="code" style="color: var(--accent);">{(memoryLimitMb / 1024).toFixed(1)} GB ({memoryLimitMb} MB)</span>
+        </div>
+        <input
+          type="range"
+          min="200"
+          max={sysInfo?.total_ram_mb ?? 8000}
+          step="200"
+          bind:value={memoryLimitMb}
+          onchange={saveMemoryLimit}
+          class="ram-slider"
+        />
+        <div class="ram-labels">
+          <span class="label-xs" style="color: var(--text-muted);">200 MB</span>
+          <span class="label-xs" style="color: var(--text-muted);">
+            {sysInfo ? (sysInfo.total_ram_mb / 1024).toFixed(1) + ' GB' : '--'}
+          </span>
+        </div>
+        <p class="tools-desc" style="margin-top: 8px;">
+          Controls how much RAM the merge engine can use. Streaming mode processes one tensor at a time for minimal memory usage.
+        </p>
+      </div>
     </div>
   </div>
 
@@ -335,6 +548,164 @@
             <span class="danger-text" style="flex: 1;">{downloadError}</span>
           </div>
         {/if}
+      {/if}
+    </div>
+  </div>
+
+  <!-- ── Training Environment ─────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">TRAINING ENVIRONMENT</span>
+    </div>
+
+    <div class="tools-panel panel">
+      {#if trainingDepsLoading}
+        <div class="tools-row">
+          <span class="label-xs" style="color: var(--info); animation: pulse 1.2s ease infinite;">CHECKING...</span>
+        </div>
+      {:else if trainingDeps?.ready}
+        <div class="tools-status-row">
+          <span class="dot dot-success"></span>
+          <span class="heading-sm" style="color: var(--success);">INSTALLED</span>
+        </div>
+        <div class="gpu-grid" style="margin-top: 8px;">
+          {#if trainingDeps.python_version}
+            <div class="gpu-cell">
+              <span class="label-xs">PYTHON</span>
+              <span class="code">{trainingDeps.python_version}</span>
+            </div>
+          {/if}
+          {#if trainingDeps.torch_version}
+            <div class="gpu-cell">
+              <span class="label-xs">TORCH</span>
+              <span class="code">{trainingDeps.torch_version}</span>
+            </div>
+          {/if}
+          <div class="gpu-cell">
+            <span class="label-xs">CUDA</span>
+            <span class="code" style="color: {trainingDeps.cuda_available ? 'var(--success)' : 'var(--text-muted)'};">
+              {trainingDeps.cuda_available ? trainingDeps.cuda_version ?? 'YES' : 'N/A'}
+            </span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">PACKAGES</span>
+            <span class="code" style="color: var(--success);">READY</span>
+          </div>
+        </div>
+        <div class="tools-actions" style="margin-top: 12px;">
+          <button class="btn btn-danger" onclick={handleCleanTraining} disabled={trainingCleaning}>
+            {trainingCleaning ? "REMOVING..." : "CLEAN / DELETE"}
+          </button>
+        </div>
+        <p class="tools-desc" style="margin-top: 4px;">
+          Removes the training Python environment (venv, torch, transformers, PEFT, etc). You can reinstall from the Training page.
+        </p>
+      {:else if trainingDeps?.venv_ready}
+        <div class="tools-status-row">
+          <span class="dot dot-active"></span>
+          <span class="heading-sm" style="color: var(--accent);">PARTIAL</span>
+        </div>
+        <p class="tools-desc">
+          Training venv exists but some packages are missing: {trainingDeps.missing_packages.join(', ') || 'unknown'}
+        </p>
+        <div class="tools-actions" style="margin-top: 8px;">
+          <button class="btn btn-danger" onclick={handleCleanTraining} disabled={trainingCleaning}>
+            {trainingCleaning ? "REMOVING..." : "CLEAN / DELETE"}
+          </button>
+        </div>
+      {:else}
+        <div class="tools-status-row">
+          <span class="dot dot-paused"></span>
+          <span class="heading-sm" style="color: var(--text-muted);">NOT INSTALLED</span>
+        </div>
+        <p class="tools-desc">
+          No training environment found. Install from the Training page.
+        </p>
+      {/if}
+
+      {#if trainingCleanError}
+        <div class="tools-error panel-flat" style="border-color: var(--danger);">
+          <span class="dot dot-danger"></span>
+          <span class="danger-text" style="flex: 1;">{trainingCleanError}</span>
+        </div>
+      {/if}
+    </div>
+  </div>
+
+  <!-- ── Convert Environment ─────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">CONVERT ENVIRONMENT</span>
+    </div>
+
+    <div class="tools-panel panel">
+      {#if convertDepsLoading}
+        <div class="tools-row">
+          <span class="label-xs" style="color: var(--info); animation: pulse 1.2s ease infinite;">CHECKING...</span>
+        </div>
+      {:else if convertDeps?.ready}
+        <div class="tools-status-row">
+          <span class="dot dot-success"></span>
+          <span class="heading-sm" style="color: var(--success);">INSTALLED</span>
+        </div>
+        <div class="gpu-grid" style="margin-top: 8px;">
+          {#if convertDeps.python_version}
+            <div class="gpu-cell">
+              <span class="label-xs">PYTHON</span>
+              <span class="code">{convertDeps.python_version}</span>
+            </div>
+          {/if}
+          <div class="gpu-cell">
+            <span class="label-xs">VENV</span>
+            <span class="code" style="color: var(--success);">READY</span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">SCRIPT</span>
+            <span class="code" style="color: {convertDeps.script_ready ? 'var(--success)' : 'var(--text-muted)'};">
+              {convertDeps.script_ready ? "READY" : "MISSING"}
+            </span>
+          </div>
+          <div class="gpu-cell">
+            <span class="label-xs">PACKAGES</span>
+            <span class="code" style="color: var(--success);">READY</span>
+          </div>
+        </div>
+        <div class="tools-actions" style="margin-top: 12px;">
+          <button class="btn btn-danger" onclick={handleCleanConvert} disabled={convertCleaning}>
+            {convertCleaning ? "REMOVING..." : "CLEAN / DELETE"}
+          </button>
+        </div>
+        <p class="tools-desc" style="margin-top: 4px;">
+          Removes the convert Python environment (venv, gguf, numpy, convert script). You can reinstall from the Convert page.
+        </p>
+      {:else if convertDeps?.venv_ready}
+        <div class="tools-status-row">
+          <span class="dot dot-active"></span>
+          <span class="heading-sm" style="color: var(--accent);">PARTIAL</span>
+        </div>
+        <p class="tools-desc">
+          Convert venv exists but some packages are missing: {convertDeps.missing_packages.join(', ') || 'unknown'}
+        </p>
+        <div class="tools-actions" style="margin-top: 8px;">
+          <button class="btn btn-danger" onclick={handleCleanConvert} disabled={convertCleaning}>
+            {convertCleaning ? "REMOVING..." : "CLEAN / DELETE"}
+          </button>
+        </div>
+      {:else}
+        <div class="tools-status-row">
+          <span class="dot dot-paused"></span>
+          <span class="heading-sm" style="color: var(--text-muted);">NOT INSTALLED</span>
+        </div>
+        <p class="tools-desc">
+          No convert environment found. Install from the Convert page.
+        </p>
+      {/if}
+
+      {#if convertCleanError}
+        <div class="tools-error panel-flat" style="border-color: var(--danger);">
+          <span class="dot dot-danger"></span>
+          <span class="danger-text" style="flex: 1;">{convertCleanError}</span>
+        </div>
       {/if}
     </div>
   </div>
@@ -605,67 +976,81 @@
     color: var(--accent);
   }
 
-  /* ── Layout Preview ─────────────────────────────── */
-  .layout-preview {
-    height: 64px;
-    background: #0b0b0b;
-    border: 1px solid #2a2a2a;
+  /* ── Font Settings ────────────────────────────────── */
+  .font-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+
+  .font-card {
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    transition: all 120ms ease;
   }
 
-  .layout-preview-bar {
-    height: 8px;
-    background: #181818;
-    border-bottom: 1px solid #2a2a2a;
+  .font-card:hover {
+    border-color: var(--border-strong);
   }
 
-  .layout-preview-body {
+  .font-active {
+    border-color: var(--accent);
+  }
+
+  .font-preview {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: 0.02em;
+  }
+
+  .font-name {
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .font-active .font-name {
+    color: var(--accent);
+  }
+
+  .fontsize-row {
     display: flex;
-    flex: 1;
+    align-items: center;
+    gap: 6px;
   }
 
-  .layout-preview-sidebar {
-    width: 24px;
-    background: #111111;
-    border-right: 1px solid #2a2a2a;
+  .fontsize-btn {
+    padding: 6px 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 120ms ease;
   }
 
-  .layout-preview-content {
-    flex: 1;
-    padding: 8px;
-    display: flex;
-    justify-content: center;
+  .fontsize-btn:hover {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
   }
 
-  .layout-preview-block {
-    height: 100%;
-    width: 60%;
-    background: #2a2a2a;
-  }
-
-  .layout-preview-stretched .layout-preview-block {
-    width: 90%;
-  }
-
-  :global([data-theme="light"]) .layout-preview {
-    background: #edecea;
-    border-color: #c8c8c0;
-  }
-
-  :global([data-theme="light"]) .layout-preview-bar {
-    background: #f5f5f2;
-    border-color: #c8c8c0;
-  }
-
-  :global([data-theme="light"]) .layout-preview-sidebar {
-    background: #f5f5f2;
-    border-color: #c8c8c0;
-  }
-
-  :global([data-theme="light"]) .layout-preview-block {
-    background: #c8c8c0;
+  .fontsize-active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-bg);
   }
 
   /* ── GPU & Tools ─────────────────────────────────── */
@@ -783,6 +1168,53 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     margin-top: 2px;
+  }
+
+  /* ── RAM Slider ─────────────────────────────────── */
+  .ram-control {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ram-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .ram-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 2px;
+    background: var(--border);
+    outline: none;
+    margin: 12px 0 8px;
+    cursor: pointer;
+  }
+
+  .ram-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+  }
+
+  .ram-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: var(--accent);
+    cursor: pointer;
+    border: none;
+    border-radius: 0;
+  }
+
+  .ram-labels {
+    display: flex;
+    justify-content: space-between;
   }
 
   /* ── Color Semantics ────────────────────────────── */

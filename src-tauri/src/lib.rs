@@ -2,6 +2,8 @@ mod commands;
 mod merge;
 mod merge_commands;
 mod model;
+mod training;
+mod training_commands;
 
 use model::state::AppState;
 
@@ -17,6 +19,7 @@ pub fn run() {
             commands::get_loaded_model,
             commands::unload_model,
             commands::inspect_model,
+            commands::inspect_capabilities,
             commands::compute_fingerprint,
             commands::quantize_model,
             commands::detect_gpu,
@@ -37,6 +40,9 @@ pub fn run() {
             commands::convert_cancel,
             commands::test_generate,
             commands::test_cancel,
+            commands::get_system_info,
+            commands::load_settings,
+            commands::save_settings,
             // Merge commands
             merge_commands::merge_load_parent,
             merge_commands::merge_load_parent_dir,
@@ -54,7 +60,26 @@ pub fn run() {
             merge_commands::merge_compare_tensors,
             merge_commands::merge_analyze_layers,
             merge_commands::merge_get_categories,
+            merge_commands::merge_detect_capabilities,
             merge_commands::merge_get_layer_components,
+            // Training commands
+            training_commands::training_check_deps,
+            training_commands::training_setup,
+            training_commands::training_detect_dataset,
+            training_commands::training_run,
+            training_commands::training_cancel,
+            training_commands::training_surgery_run,
+            training_commands::training_surgery_cancel,
+            training_commands::training_get_target_modules,
+            training_commands::training_get_layer_capabilities,
+            training_commands::training_get_layer_details,
+            training_commands::training_detect_dataset_full,
+            training_commands::training_clean_env,
+            // Convert environment
+            commands::convert_clean_env,
+            // Dataset commands
+            commands::hf_fetch_dataset_repo,
+            commands::hf_download_dataset_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

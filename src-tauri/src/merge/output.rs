@@ -576,3 +576,177 @@ fn parse_tokenizer_for_gguf(dir: &str) -> Option<Vec<(String, GgufMetaValue)>> {
 
     Some(kvs)
 }
+
+// ── Streaming Writers ────────────────────────────────────────
+
+use super::precompute::OutputManifest;
+
+pub struct StreamingSafeTensorsWriter {
+    writer: BufWriter<File>,
+}
+
+impl StreamingSafeTensorsWriter {
+    pub fn new(
+        output_path: &str,
+        manifest: &OutputManifest,
+    ) -> Result<Self, ModelError> {
+        let mut header_entries: Vec<String> = Vec::new();
+
+        for info in &manifest.tensors {
+            let shape_str = info.shape.iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            let end_offset = info.data_offset + info.f32_byte_size;
+            header_entries.push(format!(
+                "\"{}\":{{\"dtype\":\"F32\",\"shape\":[{}],\"data_offsets\":[{},{}]}}",
+                info.name, shape_str, info.data_offset, end_offset
+            ));
+        }
+
+        header_entries.push(
+            "\"__metadata__\":{\"format\":\"pt\",\"source\":\"forgeai-merge\"}".to_string()
+        );
+
+        let header_json = format!("{{{}}}", header_entries.join(","));
+        let header_bytes = header_json.as_bytes();
+        let header_len = header_bytes.len() as u64;
+
+        let file = File::create(output_path).map_err(ModelError::IoError)?;
+        let mut writer = BufWriter::new(file);
+
+        writer.write_all(&header_len.to_le_bytes()).map_err(ModelError::IoError)?;
+        writer.write_all(header_bytes).map_err(ModelError::IoError)?;
+
+        Ok(Self { writer })
+    }
+
+    pub fn write_tensor(&mut self, tensor: &Tensor) -> Result<(), ModelError> {
+        let map_err = |e: candle_core::Error| ModelError::CandleError(e.to_string());
+        let tensor_f32 = tensor.to_dtype(DType::F32).map_err(map_err)?;
+        let flat: Vec<f32> = tensor_f32.flatten_all().map_err(map_err)?
+            .to_vec1::<f32>().map_err(map_err)?;
+        let bytes: Vec<u8> = flat.iter().flat_map(|f| f.to_le_bytes()).collect();
+        self.writer.write_all(&bytes).map_err(ModelError::IoError)?;
+        Ok(())
+    }
+
+    pub fn finish(mut self) -> Result<(), ModelError> {
+        self.writer.flush().map_err(ModelError::IoError)?;
+        Ok(())
+    }
+}
+
+pub struct StreamingGgufWriter {
+    writer: BufWriter<File>,
+}
+
+impl StreamingGgufWriter {
+    pub fn new(
+        output_path: &str,
+        manifest: &OutputManifest,
+        model_name: &str,
+        source_gguf_path: Option<&str>,
+        compat: Option<&CompatInfo>,
+        config_json_dir: Option<&str>,
+    ) -> Result<Self, ModelError> {
+        let source_metadata = source_gguf_path.and_then(|path| {
+            extract_gguf_metadata(path).ok()
+        });
+
+        let file = File::create(output_path).map_err(ModelError::IoError)?;
+        let mut writer = BufWriter::new(file);
+        let mut bytes_written: usize = 0;
+
+        // GGUF Magic + Version
+        writer.write_all(b"GGUF").map_err(ModelError::IoError)?;
+        bytes_written += 4;
+        writer.write_all(&3u32.to_le_bytes()).map_err(ModelError::IoError)?;
+        bytes_written += 4;
+
+        // Tensor count
+        writer.write_all(&(manifest.tensors.len() as u64).to_le_bytes())
+            .map_err(ModelError::IoError)?;
+        bytes_written += 8;
+
+        // Metadata KVs
+        if let Some(ref meta) = source_metadata {
+            writer.write_all(&(meta.kv_count as u64).to_le_bytes())
+                .map_err(ModelError::IoError)?;
+            bytes_written += 8;
+            writer.write_all(&meta.raw_kv_bytes).map_err(ModelError::IoError)?;
+            bytes_written += meta.raw_kv_bytes.len();
+        } else {
+            let metadata_kvs = build_gguf_metadata(model_name, compat, config_json_dir);
+            writer.write_all(&(metadata_kvs.len() as u64).to_le_bytes())
+                .map_err(ModelError::IoError)?;
+            bytes_written += 8;
+            for (key, value) in &metadata_kvs {
+                bytes_written += write_gguf_string(&mut writer, key)?;
+                bytes_written += write_gguf_value(&mut writer, value)?;
+            }
+        }
+
+        // Tensor info entries
+        for info in &manifest.tensors {
+            bytes_written += write_gguf_string(&mut writer, &info.name)?;
+            writer.write_all(&(info.shape.len() as u32).to_le_bytes())
+                .map_err(ModelError::IoError)?;
+            bytes_written += 4;
+            for &dim in &info.shape {
+                writer.write_all(&(dim as u64).to_le_bytes())
+                    .map_err(ModelError::IoError)?;
+                bytes_written += 8;
+            }
+            writer.write_all(&0u32.to_le_bytes()).map_err(ModelError::IoError)?; // F32 type
+            bytes_written += 4;
+            writer.write_all(&info.data_offset.to_le_bytes()).map_err(ModelError::IoError)?;
+            bytes_written += 8;
+        }
+
+        // Align to 32 bytes
+        let alignment = 32;
+        let padding = (alignment - (bytes_written % alignment)) % alignment;
+        for _ in 0..padding {
+            writer.write_all(&[0u8]).map_err(ModelError::IoError)?;
+        }
+
+        Ok(Self { writer })
+    }
+
+    pub fn write_tensor(&mut self, tensor: &Tensor) -> Result<(), ModelError> {
+        let map_err = |e: candle_core::Error| ModelError::CandleError(e.to_string());
+        let tensor_f32 = tensor.to_dtype(DType::F32).map_err(map_err)?;
+        let flat: Vec<f32> = tensor_f32.flatten_all().map_err(map_err)?
+            .to_vec1::<f32>().map_err(map_err)?;
+        let bytes: Vec<u8> = flat.iter().flat_map(|f| f.to_le_bytes()).collect();
+        self.writer.write_all(&bytes).map_err(ModelError::IoError)?;
+        Ok(())
+    }
+
+    pub fn finish(mut self) -> Result<(), ModelError> {
+        self.writer.flush().map_err(ModelError::IoError)?;
+        Ok(())
+    }
+}
+
+pub enum StreamWriter {
+    SafeTensors(StreamingSafeTensorsWriter),
+    Gguf(StreamingGgufWriter),
+}
+
+impl StreamWriter {
+    pub fn write_tensor(&mut self, tensor: &Tensor) -> Result<(), ModelError> {
+        match self {
+            Self::SafeTensors(w) => w.write_tensor(tensor),
+            Self::Gguf(w) => w.write_tensor(tensor),
+        }
+    }
+
+    pub fn finish(self) -> Result<(), ModelError> {
+        match self {
+            Self::SafeTensors(w) => w.finish(),
+            Self::Gguf(w) => w.finish(),
+        }
+    }
+}

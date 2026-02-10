@@ -1,82 +1,94 @@
 ---
 title: "Introduction"
-description: "ForgeAI — Local-first desktop tool for loading, inspecting, optimizing, merging, and testing AI models"
+description: "ForgeAI — Local-first desktop tool for loading, inspecting, compressing, training, merging, and testing AI models"
 ---
 
 # What is ForgeAI?
 
-ForgeAI is a local-first desktop application for working with AI models. Load GGUF and SafeTensors models, inspect their architecture, quantize for deployment, merge multiple models into hybrids, and test inference — all without uploading anything to the cloud.
+ForgeAI is a local-first desktop application for working with AI models. Load GGUF and SafeTensors models, inspect their architecture, quantize for deployment, fine-tune with LoRA/QLoRA, merge multiple models into hybrids, explore datasets, and test inference — all without uploading anything to the cloud.
+
+<img src="/images/light/dashboard-light.png" alt="ForgeAI Dashboard" />
 
 <CardGroup cols={2}>
-  <Card title="Load Models" icon="upload">
-    Import GGUF files, SafeTensors files, or sharded HuggingFace model folders from disk
+  <Card title="Load & Inspect" icon="microscope">
+    Import models from disk. Analyze architecture, memory layout, tensor composition, capabilities, and runtime compatibility with 3D visualization.
   </Card>
-  <Card title="Inspect Architecture" icon="microscope">
-    Analyze memory layout, tensor composition, quantization distribution, and runtime compatibility
-  </Card>
-  <Card title="Optimize & Quantize" icon="bolt">
-    Compress GGUF models across 7 quantization levels — from Q2_K to Q8_0
+  <Card title="Train & Fine-Tune" icon="bullseye">
+    Fine-tune models with LoRA, QLoRA, SFT, DPO, or Full training. Target specific capabilities like reasoning, code, or math. Perform layer surgery.
   </Card>
   <Card title="Merge Models" icon="dna">
-    Combine 2–5 parent models into hybrids using SLERP, TIES, DARE, Frankenmerge, and more
+    Combine 2–5 parent models using 12 methods — SLERP, TIES, DARE, DeLLa, Frankenmerge, MoE conversion, and more.
+  </Card>
+  <Card title="Explore Data" icon="chart-bar">
+    Load and analyze datasets from local files or HuggingFace. Support for JSON, JSONL, CSV, and Parquet formats.
   </Card>
 </CardGroup>
 
 ## Capabilities
 
-| Capability | Description |
-|-----------|-------------|
-| **Load** | Import GGUF files, SafeTensors files, or sharded model folders from disk |
-| **Inspect** | Analyze architecture, memory layout, tensor composition, quantization, and runtime compatibility |
-| **Optimize** | Quantize GGUF models across 7 compression levels (Q2\_K through Q8\_0) |
-| **Hub** | Download models from HuggingFace and manage a local model library |
-| **Convert** | Convert SafeTensors models to GGUF format with configurable output types |
-| **M-DNA Forge** | Merge 2–5 parent models into hybrid offspring using SLERP, TIES, DARE, Frankenmerge, and more |
-| **Test** | Run inference on loaded models with real-time token streaming and performance stats |
+| Module | Code | Description |
+|--------|:----:|-------------|
+| **Dashboard** | 00 | System overview with real-time module activity tracking |
+| **Load** | 01 | Import GGUF files, SafeTensors files, or sharded model folders |
+| **Inspect** | 02 | 3D architecture viz, memory layout, capabilities, runtime compatibility |
+| **Compress** | 03 | Quantize GGUF models across 7 levels (Q2\_K through Q8\_0) |
+| **Hub** | 04 | Download models from HuggingFace, manage local model library |
+| **DataStudio** | 10 | Explore datasets (JSON/JSONL/CSV/Parquet) from local or HuggingFace |
+| **Training** | 06 | Fine-tune (LoRA/QLoRA/SFT/DPO/Full) and layer surgery |
+| **Convert** | 05 | Convert SafeTensors → GGUF with configurable output types |
+| **M-DNA Forge** | 08 | Merge 2–5 models with 12 methods, 3D visualization, presets |
+| **Test** | 09 | Run inference with real-time token streaming and performance stats |
+| **Settings** | 07 | Theme, fonts, GPU detection, 3 environment managers |
 
 ## Tech Stack
 
 <CardGroup cols={3}>
   <Card title="Frontend" icon="window">
-    SvelteKit 5 with Svelte 5 runes
+    SvelteKit 5 with Svelte 5 runes (`$state`, `$derived`, `$effect`)
   </Card>
   <Card title="Backend" icon="gear">
-    Rust via Tauri v2
+    Rust via Tauri v2 — native desktop on Linux, macOS, Windows
   </Card>
   <Card title="Tensors" icon="cube">
-    Candle (Rust ML framework)
+    Candle (Rust ML framework) for merge tensor math
   </Card>
-  <Card title="GGUF Inference" icon="terminal">
-    llama.cpp
+  <Card title="GGUF" icon="terminal">
+    llama.cpp for quantization and inference
   </Card>
-  <Card title="ST Inference" icon="python">
-    HuggingFace Transformers
+  <Card title="Training" icon="fire">
+    PyTorch + PEFT + TRL via managed Python subprocess
   </Card>
-  <Card title="Model Hub" icon="cloud-arrow-down">
-    HuggingFace API
+  <Card title="Datasets" icon="database">
+    Apache Arrow + Parquet for native Rust dataset parsing
   </Card>
 </CardGroup>
 
 ## Supported Formats
 
-| Format | Load | Inspect | Optimize | Convert | Merge | Test |
-|--------|:----:|:-------:|:--------:|:-------:|:-----:|:----:|
-| **GGUF** | ✓ | ✓ | ✓ | Output | ✓ | ✓ |
-| **SafeTensors** | ✓ | ✓ | — | Input | ✓ | ✓ |
-| **Sharded Folders** | ✓ | ✓ | — | Input | ✓ | ✓ |
+### Model Formats
+
+| Format | Load | Inspect | Compress | Convert | Merge | Train | Surgery | Test |
+|--------|:----:|:-------:|:--------:|:-------:|:-----:|:-----:|:-------:|:----:|
+| **GGUF** | ✓ | ✓ | ✓ | Output | ✓ | ✓ | ✓ | ✓ |
+| **SafeTensors** | ✓ | ✓ | — | Input | ✓ | ✓ | ✓ | ✓ |
+| **Sharded Folders** | ✓ | ✓ | — | Input | ✓ | ✓ | ✓ | ✓ |
+
+### Dataset Formats
+
+| Format | DataStudio | Training | HuggingFace |
+|--------|:----------:|:--------:|:-----------:|
+| **JSON** | ✓ | ✓ | ✓ |
+| **JSONL** | ✓ | ✓ | ✓ |
+| **CSV** | ✓ | ✓ | ✓ |
+| **Parquet** | ✓ | ✓ | ✓ |
 
 ## Navigation
 
-ForgeAI uses a sidebar with module codes:
+ForgeAI uses a sidebar with modules organized into groups:
 
-| Code | Module | Purpose |
-|------|--------|---------|
-| 00 | Dashboard | Overview and quick access |
-| 01 | Load | Import models from disk |
-| 02 | Inspect | Analyze model architecture |
-| 03 | Optimize | Quantize GGUF models |
-| 04 | Hub | Download from HuggingFace |
-| 05 | Convert | SafeTensors → GGUF |
-| 07 | Settings | Theme, GPU, tools config |
-| 08 | M-DNA | Merge models |
-| 09 | Test | Run inference |
+| Group | Modules |
+|-------|---------|
+| **MODEL** | 01 Load · 02 Inspect · 03 Compress |
+| **DATA** | 04 Hub · 10 DataStudio · 06 Training |
+| **TOOLS** | 05 Convert · 08 M-DNA · 09 Test |
+| **SYSTEM** | 00 Dashboard · 07 Settings |

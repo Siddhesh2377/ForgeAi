@@ -141,6 +141,7 @@ body,
 
 .code {
   font-size: 11px;
+  color: var(--text-muted);
   letter-spacing: 0.05em;
   font-variant-numeric: tabular-nums;
 }
@@ -386,6 +387,42 @@ body,
 .btn-ghost:hover {
   background: var(--bg-hover);
   border-color: var(--border);
+}
+
+/* ── Select / Dropdown ─────────────────────────────────── */
+select {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 5px 24px 5px 8px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23737373'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 8px 5px;
+  transition: border-color var(--transition);
+}
+
+select:hover {
+  border-color: var(--border-strong);
+}
+
+select:focus {
+  border-color: var(--accent);
+}
+
+select option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 /* ── Selection ─────────────────────────────────────────── */

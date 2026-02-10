@@ -1,50 +1,67 @@
 ---
 title: "Dashboard"
-description: "Central hub displaying system status and quick access to all ForgeAI modules"
+description: "Central hub displaying system status, module activity tracking, and quick navigation"
 icon: "house"
 ---
 
 # Dashboard (00)
 
-The Dashboard is the first screen when ForgeAI launches. It shows current model status and provides quick access to every module.
+The Dashboard is the first screen when ForgeAI launches. It shows current system status, loaded model info, and provides quick access to every module with real-time activity tracking.
 
-## Hero Panel
+<img src="/images/light/dashboard-light.png" alt="ForgeAI Dashboard" />
 
-Displays the ForgeAI brand and a specs grid:
+## System Status Banner
+
+Displays the ForgeAI brand and a live specs grid:
 
 | Field | Description |
 |-------|-------------|
-| STATUS | Current state — IDLE, LOADED, or ERROR |
-| MODEL | Name of loaded model or "NONE" |
+| STATUS | Current state — IDLE, LOADED, TRAINING, MERGING, ANALYZING, COMPLETE, ERROR |
+| MODEL | Name of loaded model or "---" |
 | FORMAT | GGUF or SAFETENSORS |
 | PARAMS | Parameter count (e.g., 7.24B) |
 | SIZE | File size on disk |
 | QUANT | Quantization type (e.g., Q4\_K\_M) |
 
-## Model Status
+## Module Groups
 
-- **No model loaded**: Dashed-border prompt with a **LOAD MODEL** button
-- **Model loaded**: Green panel showing model name, format, parameter count, and file size
+Modules are organized into three groups matching the sidebar:
 
-## Module Grid
+| Group | Modules |
+|-------|---------|
+| **MODEL** | Load (01), Inspect (02), Compress (03) |
+| **DATA** | Hub (04), DataStudio (10), Training (06) |
+| **TOOLS** | Convert (05), M-DNA (08), Test (09) |
 
-A 3-column grid of cards for each module:
+Each module card shows:
+- Module code and name
+- Short description
+- Supported formats/operations
+- Current status badge (ready / awaiting / active)
 
-| Module | Availability | Formats |
-|--------|-------------|---------|
-| Load | Always ready | GGUF, SafeTensors |
-| Inspect | Requires loaded model | GGUF, SafeTensors |
-| Optimize | Requires loaded GGUF | GGUF only |
-| Hub | Always ready | GGUF, SafeTensors |
-| Convert | Always ready | SafeTensors input |
-| M-DNA | Always ready | GGUF, SafeTensors |
-| Test | Always ready | GGUF, SafeTensors |
+## Live Activity Badges
 
-Modules that require a loaded model show a **REQUIRES MODEL** overlay when no model is present.
+When background tasks are running, module cards show real-time activity:
+
+| Activity | Badge Example |
+|----------|-------------|
+| Training in progress | `TRAINING 45%` (blue, pulsing) |
+| Layer surgery | `SURGERY` (blue, pulsing) |
+| Model merging | `MERGING 72%` (blue, pulsing) |
+| Layer analysis | `ANALYZING` (blue, pulsing) |
+| Merge complete | `COMPLETE` (green) |
+| Dataset loaded | `52,002 ROWS` (green) |
+| Model loading | `LOADING` (blue, pulsing) |
+
+Click any module card to navigate directly to it.
 
 ## Status Bar
 
 Persistent across all screens at the bottom of the app:
-- Current model name and format
-- Parameter count
-- CPU, memory, and version info
+- Left: current state indicator, loaded model name, format, parameters
+- Right: CPU cores/threads, memory usage, version info
+- Status bar border color changes: blue during active tasks, green on success, red on error
+
+## Sidebar Progress
+
+When a long-running task is active (training, merging, analyzing), the sidebar shows a progress indicator with percentage and pulsing animation.

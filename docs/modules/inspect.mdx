@@ -1,20 +1,22 @@
 ---
 title: "Inspect"
-description: "Deep analysis of model architecture, memory layout, tensor composition, and runtime compatibility"
+description: "Deep analysis of model architecture, memory layout, capabilities, tensor composition, and runtime compatibility"
 icon: "microscope"
 ---
 
 # Inspect (02)
 
-Inspect provides deep analysis of a loaded model — memory breakdown, quantization distribution, runtime compatibility, and an isometric 3D visualization.
+Inspect provides deep analysis of a loaded model — 3D architecture visualization, memory breakdown, capability detection, quantization distribution, runtime compatibility, and more.
+
+<img src="/images/light/inspect-light.png" alt="Inspect Module" />
 
 <Note>
   A model must be loaded via the Load module before Inspect is available.
 </Note>
 
-## Isometric Visualization
+## Isometric 3D Visualization
 
-An interactive 3D isometric view renders the model as stacked blocks:
+An interactive isometric view renders the model as stacked blocks:
 
 - **Embedding layer** at the bottom
 - **Transformer layers** stacked vertically, colored by attention/MLP tensor ratio
@@ -29,22 +31,56 @@ An interactive 3D isometric view renders the model as stacked blocks:
 
 ## Memory Distribution
 
-Horizontal bar chart showing memory by component:
+Six-component breakdown showing how memory is allocated:
 
 | Component | Description |
 |-----------|-------------|
 | Embeddings | Token embedding weights |
 | Attention | Q, K, V, O projection matrices |
 | MLP | Gate, up, down projection matrices |
-| Norms | Layer normalization weights |
+| Norms | RMSNorm / LayerNorm weights |
 | Output | LM head / output projection |
+| Other | Miscellaneous tensors |
 
-Each component shows bytes, percentage, and a proportional bar.
+Each component shows exact byte count, percentage, and a proportional bar.
 
 ## Quantization Breakdown
 
 For each dtype present (F32, F16, BF16, Q8\_0, Q4\_K\_M, etc.):
-- Tensor count, total size, percentage, and visual bar
+- Tensor count, total size, percentage, and visual bar chart
+
+## Capability Detection
+
+<img src="/images/light/inspect-caps-light.png" alt="Inspect Capabilities" />
+
+Analyzes model architecture to detect 7 capabilities with confidence scores:
+
+| Capability | What It Detects |
+|-----------|----------------|
+| **Tool Calling** | API/function calling ability |
+| **Reasoning** | Chain-of-thought reasoning |
+| **Code** | Code generation/understanding |
+| **Mathematics** | Mathematical reasoning |
+| **Multilingual** | Multi-language support |
+| **Instruction** | Instruction following |
+| **Safety** | Safety/alignment layers |
+
+## Runtime Compatibility Matrix
+
+Checks support across 8 popular inference runtimes:
+
+| Runtime | Formats |
+|---------|---------|
+| llama.cpp | GGUF |
+| Ollama | GGUF |
+| LM Studio | GGUF |
+| KoboldCpp | GGUF |
+| GPT4All | GGUF |
+| Jan | GGUF |
+| LocalAI | GGUF |
+| text-generation-webui | GGUF, SafeTensors |
+
+Status: COMPATIBLE, PARTIAL, or NOT SUPPORTED.
 
 ## Attention Architecture
 
@@ -58,30 +94,23 @@ For each dtype present (F32, F16, BF16, Q8\_0, Q4\_K\_M, etc.):
 - Vocabulary size
 - Special tokens (BOS, EOS, PAD, UNK) with IDs
 
-## Runtime Compatibility
-
-| Runtime | Formats |
-|---------|---------|
-| llama.cpp | GGUF |
-| Ollama | GGUF |
-| LM Studio | GGUF |
-| KoboldCpp | GGUF |
-| vLLM | SafeTensors |
-| HF Transformers | SafeTensors |
-| ExLlamaV2 | SafeTensors |
-| MLX | SafeTensors |
-
-Status: COMPATIBLE, PARTIAL, or NOT SUPPORTED.
-
 ## File Verification
 
 Click **COMPUTE HASH** to calculate SHA-256 fingerprint for integrity verification.
 
 ## Data Export
 
-- **JSON** — Full model metadata
-- **CSV** — Tensor list with names, dtypes, shapes
+- **JSON** — Full model metadata as JSON
+- **CSV** — Tensor list with names, dtypes, shapes, and sizes
 
 ## Layer Hierarchy
 
 Expandable list per layer showing attention, MLP, norm, and other tensors. Filter by name, dtype, or layer range.
+
+## Tensor Browser
+
+Searchable, filterable list of all tensors with:
+- Tensor name
+- Data type
+- Shape dimensions
+- Memory size

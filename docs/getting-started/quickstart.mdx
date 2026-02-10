@@ -1,6 +1,6 @@
 ---
 title: "Quickstart"
-description: "Load your first model, inspect it, and run inference in under 2 minutes"
+description: "Load your first model, inspect it, train it, merge models, and run inference"
 ---
 
 ## Load → Inspect → Test
@@ -18,13 +18,14 @@ description: "Load your first model, inspect it, and run inference in under 2 mi
     1. Click **Inspect** (02) in the sidebar
     2. Explore the isometric 3D visualization — hover layers for details
     3. Review memory distribution, quantization breakdown, and runtime compatibility
+    4. Check capability detection (reasoning, code, math, etc.)
   </Step>
   <Step title="Run inference">
     1. Click **Test** (09) in the sidebar
     2. Click **USE LOADED** to select your model
-    3. Type a prompt (e.g., `"Hello, how are you?"`)
-    4. Click **GENERATE**
-    5. Watch tokens stream in real time
+    3. Type a prompt or click a quick test preset (CODE, MATH, REASON, CREATIVE, INSTRUCT, CHAT)
+    4. Configure GPU layers, temperature, and max tokens
+    5. Click **GENERATE** and watch tokens stream in real time
   </Step>
 </Steps>
 
@@ -42,13 +43,47 @@ description: "Load your first model, inspect it, and run inference in under 2 mi
   </Step>
   <Step title="Load and quantize">
     1. In Library view, click **LOAD** on the downloaded model
-    2. Go to **Optimize** (03)
-    3. Pick a quantization level (e.g., **BALANCED / Q5\_K\_M**)
+    2. Go to **Compress** (03)
+    3. Pick a quantization preset (**MOBILE**, **BALANCED**, or **QUALITY**)
     4. Click **QUANTIZE MODEL** and choose output path
   </Step>
 </Steps>
 
-## Merge two models
+## Explore a Dataset
+
+<Steps>
+  <Step title="Load from HuggingFace">
+    1. Click **DataStudio** (10) in the sidebar
+    2. Switch to **HUGGINGFACE** source
+    3. Enter a dataset repo ID (e.g., `tatsu-lab/alpaca`)
+    4. Click **FETCH** to see available files
+    5. Click **DOWNLOAD** on a Parquet or JSON file
+    6. Dataset auto-loads after download
+  </Step>
+  <Step title="Analyze">
+    Review metadata (rows, columns, format), column analysis (dtypes, null counts), and preview data in the table view.
+  </Step>
+</Steps>
+
+## Fine-Tune a Model
+
+<Steps>
+  <Step title="Select model and dataset">
+    1. Click **Training** (06) in the sidebar
+    2. Browse for a model (GGUF or SafeTensors)
+    3. Browse for a dataset (JSON, JSONL, CSV, or Parquet)
+  </Step>
+  <Step title="Choose method and preset">
+    1. Select a training method (LoRA, QLoRA, SFT, DPO, Full)
+    2. Pick a VRAM preset (LOW VRAM ~4GB, BALANCED ~6GB, QUALITY ~12GB, MAX QUALITY ~24GB)
+    3. Optionally target specific capabilities (reasoning, code, math, etc.)
+  </Step>
+  <Step title="Train">
+    Click **START TRAINING**, monitor real-time progress (loss, epoch, VRAM usage, ETA).
+  </Step>
+</Steps>
+
+## Merge Two Models
 
 <Steps>
   <Step title="Load parents">
@@ -56,13 +91,13 @@ description: "Load your first model, inspect it, and run inference in under 2 mi
     2. In the Files tab, click **+ LOAD FILE** twice to load 2 models
   </Step>
   <Step title="Configure merge">
-    1. Go to Settings tab, select **SLERP** method
-    2. Set interpolation factor `t` (0.5 = equal blend)
-    3. Set output format and path
+    1. Go to Settings tab, pick a preset (**QUICK BLEND**, **SMOOTH MERGE**, **TASK TUNER**, etc.)
+    2. Or manually select a method and tune parameters
+    3. Set output format (SafeTensors or GGUF) and output path
   </Step>
   <Step title="Build">
     1. Click **BUILD MERGE**
-    2. Monitor progress
+    2. Monitor progress in the sidebar and status bar
     3. Result shows output path and size
   </Step>
 </Steps>

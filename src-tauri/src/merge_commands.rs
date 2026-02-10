@@ -4,6 +4,7 @@ use std::sync::atomic::Ordering;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
+use crate::merge::capabilities::{self, CapabilityReport};
 use crate::merge::compatibility;
 use crate::merge::config::{MergeConfig, MergeMethod, MergeMethodInfo};
 use crate::merge::executor::{self, MergeResult};
@@ -54,7 +55,7 @@ impl From<&ParentModel> for ParentModelInfo {
             architecture: p.architecture.clone(),
             quantization: p.quantization.clone(),
             color: p.color.clone(),
-            tensor_count: p.compat.tensor_names.len(),
+            tensor_count: p.compat.tensor_metas.len(),
         }
     }
 }
@@ -303,7 +304,7 @@ pub async fn merge_profile_layers(
         let parent = registry.get(&parent_id).ok_or_else(|| {
             ModelError::ParentNotFound(parent_id.clone())
         })?;
-        (parent.compat.tensor_names.clone(), parent.layer_count.unwrap_or(32), parent_id.clone())
+        (parent.compat.tensor_names(), parent.layer_count.unwrap_or(32), parent_id.clone())
     };
 
     tauri::async_runtime::spawn_blocking(move || {
@@ -354,9 +355,9 @@ pub fn merge_compare_tensors(
         std::collections::HashMap::new();
 
     for parent in parents {
-        for name in &parent.compat.tensor_names {
+        for meta in &parent.compat.tensor_metas {
             tensor_parents
-                .entry(name.clone())
+                .entry(meta.name.clone())
                 .or_default()
                 .push(parent.id.clone());
         }
@@ -406,9 +407,12 @@ pub async fn merge_analyze_layers(
         })?.clone()
     };
 
+    // Detect capabilities first for capability-aware classification
+    let cap_report = capabilities::detect_capabilities(&parent);
+
     // Run on a blocking thread to avoid freezing the UI
     tauri::async_runtime::spawn_blocking(move || {
-        profiler::tensor_analysis::analyze_parent(&app, &parent, cancel)
+        profiler::tensor_analysis::analyze_parent(&app, &parent, cancel, Some(&cap_report))
     })
     .await
     .map_err(|e| ModelError::MergeError(format!("Task join error: {}", e)))?
@@ -417,6 +421,18 @@ pub async fn merge_analyze_layers(
 #[tauri::command]
 pub fn merge_get_categories() -> Vec<profiler::tensor_analysis::LayerCategory> {
     profiler::tensor_analysis::all_categories()
+}
+
+#[tauri::command]
+pub fn merge_detect_capabilities(
+    parent_id: String,
+    state: State<'_, AppState>,
+) -> Result<CapabilityReport, ModelError> {
+    let registry = state.merge_parents.lock().unwrap();
+    let parent = registry.get(&parent_id).ok_or_else(|| {
+        ModelError::ParentNotFound(parent_id.clone())
+    })?;
+    Ok(capabilities::detect_capabilities(parent))
 }
 
 #[tauri::command]
@@ -439,15 +455,15 @@ pub fn merge_get_layer_components(
         let mut other = Vec::new();
         let total_params: u64 = 0;
 
-        for name in &parent.compat.tensor_names {
-            if let Some(layer_idx) = inspect::extract_layer_index(name) {
+        for meta in &parent.compat.tensor_metas {
+            if let Some(layer_idx) = inspect::extract_layer_index(&meta.name) {
                 if layer_idx == idx {
-                    let component = inspect::classify_tensor(name);
+                    let component = inspect::classify_tensor(&meta.name);
                     match component {
-                        "attention" => attn.push(name.clone()),
-                        "mlp" => mlp.push(name.clone()),
-                        "norm" => norm.push(name.clone()),
-                        _ => other.push(name.clone()),
+                        "attention" => attn.push(meta.name.clone()),
+                        "mlp" => mlp.push(meta.name.clone()),
+                        "norm" => norm.push(meta.name.clone()),
+                        _ => other.push(meta.name.clone()),
                     }
                 }
             }

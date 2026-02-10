@@ -50,7 +50,7 @@ pub fn tensor_memory_bytes(dtype: &str, shape: &[u64]) -> u64 {
     ((elements as f64 * bpw) / 8.0).ceil() as u64
 }
 
-fn format_bytes(bytes: u64) -> String {
+pub fn format_bytes(bytes: u64) -> String {
     const GB: f64 = 1_073_741_824.0;
     const MB: f64 = 1_048_576.0;
     const KB: f64 = 1_024.0;

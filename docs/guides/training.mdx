@@ -1,0 +1,161 @@
+---
+title: "Training & Fine-Tuning"
+description: "Complete guide to fine-tuning models and performing layer surgery in ForgeAI"
+icon: "bullseye"
+---
+
+# Training & Fine-Tuning Guide
+
+This guide covers everything you need to know about training models in ForgeAI — from basic LoRA fine-tuning to advanced capability-targeted training and layer surgery.
+
+## Prerequisites
+
+### Hardware Requirements
+
+| Method | Minimum VRAM | Recommended |
+|--------|:------------:|:-----------:|
+| QLoRA (4-bit) | 4 GB | 8 GB |
+| LoRA | 6 GB | 12 GB |
+| SFT | 8 GB | 16 GB |
+| DPO | 8 GB | 16 GB |
+| Full Fine-Tune | 16 GB | 24+ GB |
+
+### Software Requirements
+
+- **Python 3.10+** (installed on your system)
+- ForgeAI handles the rest: creates a virtual environment and installs PyTorch, Transformers, PEFT, TRL, and BitsAndBytes automatically.
+
+<Note>
+  Layer surgery requires **no** Python or GPU — it's pure Rust.
+</Note>
+
+## Choosing a Training Method
+
+### LoRA (Recommended for Most Users)
+
+Low-Rank Adaptation trains small adapter matrices alongside frozen base weights. Best balance of quality and efficiency.
+
+**When to use:** General fine-tuning, instruction tuning, task adaptation.
+
+### QLoRA (Best for Low VRAM)
+
+Same as LoRA but quantizes the base model to 4-bit, dramatically reducing VRAM usage with minimal quality impact.
+
+**When to use:** Limited GPU memory (4–8 GB), large models.
+
+### SFT (Standard Training)
+
+Supervised Fine-Tuning on instruction/completion datasets. All parameters are updated.
+
+**When to use:** When you have a large, high-quality dataset and sufficient VRAM.
+
+### DPO (Preference Learning)
+
+Direct Preference Optimization learns from chosen/rejected response pairs — no reward model needed.
+
+**When to use:** Alignment, preference tuning, RLHF-style training.
+
+### Full Fine-Tune
+
+Updates every parameter in the model. Maximum quality but maximum VRAM.
+
+**When to use:** When LoRA quality isn't sufficient and you have abundant GPU memory.
+
+## Capability-Targeted Training
+
+Instead of fine-tuning every layer, ForgeAI can target layers responsible for specific capabilities:
+
+### How It Works
+
+1. ForgeAI analyzes the model architecture and maps layers to capabilities
+2. You select which capabilities to train (e.g., "Code Generation" + "Reasoning")
+3. Only layers associated with those capabilities are included in training
+4. Other layers remain frozen, preserving existing knowledge
+
+### Available Capabilities
+
+| Capability | Layer Position | Example Use Case |
+|-----------|:--------------:|-----------------|
+| Tool Calling | Upper-mid | Teach function calling |
+| Reasoning | Mid-upper | Improve logic/CoT |
+| Code | Upper-mid | Better code output |
+| Math | Mid | Mathematical ability |
+| Multilingual | Early-mid | Add languages |
+| Instruction | Mid | Follow instructions |
+| Safety | Final | Alignment tuning |
+
+<Tip>
+  Capability targeting reduces training time and preserves the model's existing knowledge in untargeted areas.
+</Tip>
+
+## Preparing Datasets
+
+### Supported Templates
+
+ForgeAI auto-detects your dataset format:
+
+| Template | Required Columns | Training Methods |
+|----------|-----------------|-----------------|
+| **Alpaca** | instruction, input, output | SFT, LoRA, QLoRA, Full |
+| **ShareGPT** | conversations | SFT, LoRA, QLoRA, Full |
+| **ChatML** | messages | SFT, LoRA, QLoRA, Full |
+| **DPO** | prompt, chosen, rejected | DPO |
+| **Text** | text | SFT, LoRA, QLoRA, Full |
+| **Prompt/Completion** | prompt, completion | SFT, LoRA, QLoRA, Full |
+
+### Dataset Tips
+
+- Use **DataStudio** (10) to explore and validate your dataset before training
+- For DPO, ensure each row has both `chosen` and `rejected` responses
+- Longer sequences require more VRAM — reduce `max_seq_length` if running out of memory
+- Parquet is the most efficient format for large datasets
+
+## Training Presets
+
+| Preset | VRAM | Method | Rank | Seq Len | Best For |
+|--------|:----:|--------|:----:|:-------:|---------|
+| LOW VRAM | ~4 GB | QLoRA | 8 | 256 | Tight GPU budget |
+| BALANCED | ~6 GB | QLoRA | 16 | 512 | General purpose |
+| QUALITY | ~12 GB | LoRA | 32 | 1024 | High-quality output |
+| MAX QUALITY | ~24 GB | LoRA | 64 | 2048 | Maximum quality |
+
+## Layer Surgery
+
+Layer surgery is a separate mode that operates directly on model tensors — no training, no GPU, no Python.
+
+### Remove Layers
+
+Remove layers to create smaller, faster models. Useful for:
+- Creating smaller test models
+- Removing redundant layers
+- Reducing inference latency
+
+### Duplicate Layers
+
+Duplicate layers to increase model depth. Useful for:
+- Expanding model capacity
+- Experimental architecture modifications
+
+### Surgery Process
+
+1. Select a model (GGUF or SafeTensors)
+2. Load layer details to see full tensor breakdown
+3. Select layers to remove or positions to duplicate
+4. Review the preview (final layer count, estimated size)
+5. Run surgery — a new file is created, the original is never modified
+6. ForgeAI automatically updates `config.json` / GGUF metadata
+
+<Warning>
+  Removing too many layers will significantly degrade model quality. Start with removing 1–2 layers and test output quality.
+</Warning>
+
+## Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "Python not found" | Install Python 3.10+ and ensure it's in PATH |
+| CUDA out of memory | Switch to QLoRA, reduce batch size, or reduce max\_seq\_length |
+| Slow training on GPU | Verify CUDA is available in Settings → Training Environment |
+| Training loss not decreasing | Try lower learning rate, more epochs, or different preset |
+| "No target modules found" | Model architecture may not support LoRA — try Full Fine-Tune |
+| Surgery output has errors | Avoid removing embedding/output layers (first/last) |

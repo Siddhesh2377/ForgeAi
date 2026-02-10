@@ -15,6 +15,9 @@ pub struct AppState {
     pub merge_cancel: Arc<AtomicBool>,
     pub merge_active: Arc<AtomicBool>,
     pub profiler_cancel: Arc<AtomicBool>,
+    pub training_cancel: Arc<AtomicBool>,
+    pub training_pid: Mutex<Option<u32>>,
+    pub surgery_cancel: Arc<AtomicBool>,
 }
 
 impl Default for AppState {
@@ -30,6 +33,9 @@ impl Default for AppState {
             merge_cancel: Arc::new(AtomicBool::new(false)),
             merge_active: Arc::new(AtomicBool::new(false)),
             profiler_cancel: Arc::new(AtomicBool::new(false)),
+            training_cancel: Arc::new(AtomicBool::new(false)),
+            training_pid: Mutex::new(None),
+            surgery_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 }

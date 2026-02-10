@@ -1,15 +1,17 @@
 ---
-title: "Optimize"
+title: "Compress"
 description: "Quantize GGUF models across 7 compression levels with real-time size and quality preview"
 icon: "bolt"
 ---
 
-# Optimize (03)
+# Compress (03)
 
 Quantize GGUF models to smaller sizes using llama-quantize. Preview estimated size, quality, and speed before running.
 
+<img src="/images/light/compress-light.png" alt="Compress Module" />
+
 <Note>
-  Requires a loaded **GGUF** model and **llama.cpp tools** installed (see Settings).
+  Requires a loaded **GGUF** model and **llama.cpp tools** installed (see [Settings](/modules/settings)).
 </Note>
 
 ## Quantization Levels
@@ -48,14 +50,14 @@ Before quantizing, a preview shows:
 - **Speed improvement** relative to original
 
 <Warning>
-  Requantizing an already-quantized model produces worse results than quantizing from a high-precision source.
+  Requantizing an already-quantized model produces worse results than quantizing from a high-precision source (F16/F32).
 </Warning>
 
 ## Workflow
 
 <Steps>
   <Step title="Load a GGUF model">
-    Use the Load module to import a GGUF file
+    Use the [Load module](/modules/load) to import a GGUF file
   </Step>
   <Step title="Select target level">
     Click a level button or preset card
@@ -68,4 +70,6 @@ Before quantizing, a preview shows:
   </Step>
 </Steps>
 
-The original model is never modified — output is a new GGUF file.
+<Tip>
+  The original model is never modified — output is always a new GGUF file.
+</Tip>

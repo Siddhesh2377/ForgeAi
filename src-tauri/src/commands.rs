@@ -98,6 +98,39 @@ pub fn inspect_model(state: State<'_, AppState>) -> Result<InspectData, ModelErr
     Ok(inspect::analyze(&info.all_tensors, &info.metadata))
 }
 
+#[tauri::command]
+pub fn inspect_capabilities(
+    state: State<'_, AppState>,
+) -> Result<crate::merge::capabilities::CapabilityReport, ModelError> {
+    let loaded = state.loaded_model.lock().unwrap();
+    let info = loaded.as_ref().ok_or_else(|| ModelError::ParseError {
+        format: "inspect".into(),
+        reason: "No model loaded".into(),
+    })?;
+
+    // Build a temporary ParentModel from the loaded ModelInfo
+    let compat = crate::merge::registry::CompatInfo::from_model_info(info);
+    let parent = crate::merge::registry::ParentModel {
+        id: "inspect".into(),
+        slot: 0,
+        name: info.file_name.clone(),
+        file_path: info.file_path.clone(),
+        format: info.format.clone(),
+        file_size: info.file_size,
+        file_size_display: info.file_size_display.clone(),
+        parameter_count: info.parameter_count,
+        parameter_count_display: info.parameter_count_display.clone(),
+        layer_count: info.layer_count,
+        architecture: info.architecture.clone(),
+        quantization: info.quantization.clone(),
+        compat,
+        color: "#f59e0b".into(),
+        is_dir: info.shard_count.map_or(false, |s| s > 0),
+    };
+
+    Ok(crate::merge::capabilities::detect_capabilities(&parent))
+}
+
 // ── Fingerprint ────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1353,7 +1386,7 @@ fn get_convert_dir(app: &tauri::AppHandle) -> Result<PathBuf, ModelError> {
     Ok(data_dir.join("tools").join("convert"))
 }
 
-fn find_python() -> Option<(String, String)> {
+pub(crate) fn find_python() -> Option<(String, String)> {
     let candidates = if cfg!(target_os = "windows") {
         vec!["python", "python3"]
     } else {
@@ -2081,6 +2114,12 @@ pub async fn test_generate(
     prompt: String,
     max_tokens: u32,
     temperature: f64,
+    top_p: Option<f64>,
+    top_k: Option<u32>,
+    repeat_penalty: Option<f64>,
+    gpu_layers: Option<i32>,
+    system_prompt: Option<String>,
+    context_size: Option<u32>,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<TestResult, ModelError> {
@@ -2134,8 +2173,13 @@ pub async fn test_generate(
 
         let gpu = detect_gpu();
         let has_gpu = gpu.has_nvidia || gpu.has_vulkan || gpu.has_metal;
-        let ngl = if has_gpu { "99" } else { "0" };
-        let gguf_device = if has_gpu {
+        let ngl_val = match gpu_layers {
+            Some(n) if n >= 0 => n.to_string(),
+            _ => if has_gpu { "99".to_string() } else { "0".to_string() },
+        };
+        let gguf_device = if ngl_val == "0" {
+            "CPU".to_string()
+        } else if has_gpu {
             if gpu.has_nvidia { "CUDA".to_string() }
             else if gpu.has_metal { "METAL".to_string() }
             else { "VULKAN".to_string() }
@@ -2143,17 +2187,47 @@ pub async fn test_generate(
             "CPU".to_string()
         };
 
+        // Build the full prompt with optional system prompt
+        let full_prompt = if let Some(ref sys) = system_prompt {
+            if !sys.trim().is_empty() {
+                format!("[INST] <<SYS>>\n{}\n<</SYS>>\n\n{} [/INST]", sys.trim(), prompt)
+            } else {
+                prompt.clone()
+            }
+        } else {
+            prompt.clone()
+        };
+
+        let mut args = vec![
+            "-m".to_string(), inference_path.to_string_lossy().to_string(),
+            "-p".to_string(), full_prompt,
+            "-n".to_string(), n_str.clone(),
+            "--temp".to_string(), temp_str.clone(),
+            "-ngl".to_string(), ngl_val,
+            "--no-display-prompt".to_string(),
+            "--log-disable".to_string(),
+            "--simple-io".to_string(),
+        ];
+
+        if let Some(tp) = top_p {
+            args.push("--top-p".to_string());
+            args.push(format!("{:.2}", tp));
+        }
+        if let Some(tk) = top_k {
+            args.push("--top-k".to_string());
+            args.push(tk.to_string());
+        }
+        if let Some(rp) = repeat_penalty {
+            args.push("--repeat-penalty".to_string());
+            args.push(format!("{:.2}", rp));
+        }
+        if let Some(ctx) = context_size {
+            args.push("-c".to_string());
+            args.push(ctx.to_string());
+        }
+
         let mut child = tokio::process::Command::new(&binary)
-            .args([
-                "-m", &inference_path.to_string_lossy(),
-                "-p", &prompt,
-                "-n", &n_str,
-                "--temp", &temp_str,
-                "-ngl", ngl,
-                "--no-display-prompt",
-                "--log-disable",
-                "--simple-io",
-            ])
+            .args(&args)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -2251,60 +2325,128 @@ pub async fn test_generate(
         (output, gguf_device)
     } else {
         // ── SafeTensors: use Python transformers ──
-        let convert_dir = get_convert_dir(&app)?;
-        let venv_python = get_venv_python(&convert_dir);
+        // Prefer training venv (has bitsandbytes, accelerate, peft for quantized models),
+        // fall back to convert venv
+        let training_dir = crate::training::venv::get_training_dir(&app)?;
+        let training_python = crate::training::venv::get_venv_python(&training_dir);
 
-        if !venv_python.exists() {
+        let convert_dir = get_convert_dir(&app)?;
+        let convert_python = get_venv_python(&convert_dir);
+
+        let venv_python = if training_python.exists() {
+            training_python
+        } else if convert_python.exists() {
+            convert_python
+        } else {
             return Err(ModelError::ParseError {
                 format: "test".into(),
-                reason: "Python environment not set up. Install dependencies via the CONVERT page first.".into(),
+                reason: "Python environment not set up. Install dependencies via the TRAINING or CONVERT page first.".into(),
             });
-        }
+        };
 
         let script = r#"
-import sys, torch, warnings, gc
+import sys, json, os, torch, warnings, gc
 warnings.filterwarnings("ignore")
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer, BitsAndBytesConfig
 from threading import Thread
 
 path, prompt = sys.argv[1], sys.argv[2]
 max_tok, temp = int(sys.argv[3]), float(sys.argv[4])
+opts = json.loads(sys.argv[5]) if len(sys.argv) > 5 else {}
+
+force_cpu = opts.get("gpu_layers", -1) == 0
+has_cuda = torch.cuda.is_available() and not force_cpu
+
+# Check if model has quantization config (4-bit/8-bit fine-tuned)
+import json as _json
+config_path = os.path.join(path, "config.json")
+is_quantized = False
+if os.path.exists(config_path):
+    with open(config_path) as f:
+        cfg = _json.load(f)
+    is_quantized = "quantization_config" in cfg
+
+tok = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
+if tok.pad_token is None:
+    tok.pad_token = tok.eos_token
 
 device = "cpu"
-dtype = torch.float32
+model = None
 
-if torch.cuda.is_available():
+if has_cuda:
+    torch.cuda.empty_cache()
+    gc.collect()
     try:
-        # Try loading on GPU with float16
-        device = "cuda"
-        dtype = torch.float16
-        tok = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
-        if tok.pad_token is None:
-            tok.pad_token = tok.eos_token
-        model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=dtype, low_cpu_mem_usage=True, trust_remote_code=True).to(device)
-    except (torch.cuda.OutOfMemoryError, RuntimeError):
-        # OOM on GPU — fall back to CPU
+        if is_quantized:
+            # Quantized models: use device_map="auto" (requires accelerate)
+            model = AutoModelForCausalLM.from_pretrained(
+                path, device_map="auto", trust_remote_code=True, low_cpu_mem_usage=True
+            )
+            device = "cuda"
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                path, torch_dtype=torch.float16, low_cpu_mem_usage=True, trust_remote_code=True
+            ).to("cuda")
+            device = "cuda"
+    except Exception:
         gc.collect()
         torch.cuda.empty_cache()
         device = "cpu"
-        dtype = torch.float32
-        tok = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
-        if tok.pad_token is None:
-            tok.pad_token = tok.eos_token
-        model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=dtype, low_cpu_mem_usage=True, trust_remote_code=True)
-else:
-    tok = AutoTokenizer.from_pretrained(path, trust_remote_code=True)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-    model = AutoModelForCausalLM.from_pretrained(path, torch_dtype=dtype, low_cpu_mem_usage=True, trust_remote_code=True)
+        model = None
+
+if model is None:
+    if is_quantized:
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                path, device_map="cpu", trust_remote_code=True, low_cpu_mem_usage=True,
+                quantization_config=BitsAndBytesConfig(load_in_8bit=False, load_in_4bit=False) if not has_cuda else None,
+            )
+        except Exception:
+            # Last resort: force no quantization
+            model = AutoModelForCausalLM.from_pretrained(
+                path, torch_dtype=torch.float32, low_cpu_mem_usage=True, trust_remote_code=True,
+                ignore_mismatched_sizes=True,
+            )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            path, torch_dtype=torch.float32, low_cpu_mem_usage=True, trust_remote_code=True
+        )
 
 sys.stderr.write(f"[device:{device}]\n")
 sys.stderr.flush()
 model.eval()
 
-ids = tok(prompt, return_tensors="pt").to(device)
+# Build prompt — try chat template first, fall back to manual
+sys_prompt = opts.get("system_prompt", "")
+try:
+    messages = []
+    if sys_prompt:
+        messages.append({"role": "system", "content": sys_prompt})
+    messages.append({"role": "user", "content": prompt})
+    full = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+except Exception:
+    if sys_prompt:
+        full = f"[INST] <<SYS>>\n{sys_prompt}\n<</SYS>>\n\n{prompt} [/INST]"
+    else:
+        full = prompt
+
+ids = tok(full, return_tensors="pt")
+if device == "cuda" and not is_quantized:
+    ids = ids.to("cuda")
+elif device == "cuda" and is_quantized:
+    ids = ids.to(model.device)
+
 streamer = TextIteratorStreamer(tok, skip_prompt=True, skip_special_tokens=True)
 gen_kwargs = dict(**ids, max_new_tokens=max_tok, temperature=max(temp, 0.01), do_sample=temp > 0, streamer=streamer)
+
+if "top_p" in opts and opts["top_p"] is not None:
+    gen_kwargs["top_p"] = opts["top_p"]
+if "top_k" in opts and opts["top_k"] is not None:
+    gen_kwargs["top_k"] = opts["top_k"]
+if "repeat_penalty" in opts and opts["repeat_penalty"] is not None:
+    gen_kwargs["repetition_penalty"] = opts["repeat_penalty"]
 
 thread = Thread(target=model.generate, kwargs=gen_kwargs)
 thread.start()
@@ -2317,8 +2459,17 @@ thread.join()
         let temp_str = format!("{:.2}", temperature);
         let n_str = max_tokens.to_string();
 
+        // Build extra options JSON for Python
+        let mut py_opts = serde_json::json!({});
+        if let Some(tp) = top_p { py_opts["top_p"] = serde_json::json!(tp); }
+        if let Some(tk) = top_k { py_opts["top_k"] = serde_json::json!(tk); }
+        if let Some(rp) = repeat_penalty { py_opts["repeat_penalty"] = serde_json::json!(rp); }
+        if let Some(gl) = gpu_layers { py_opts["gpu_layers"] = serde_json::json!(gl); }
+        if let Some(ref sp) = system_prompt { py_opts["system_prompt"] = serde_json::json!(sp); }
+        let py_opts_str = py_opts.to_string();
+
         let mut child = tokio::process::Command::new(&venv_python)
-            .args(["-c", script, &inference_path.to_string_lossy(), &prompt, &n_str, &temp_str])
+            .args(["-c", script, &inference_path.to_string_lossy(), &prompt, &n_str, &temp_str, &py_opts_str])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
@@ -2360,7 +2511,7 @@ thread.join()
 
         let stderr = child.stderr.take();
         let err_handle = tokio::spawn(async move {
-            let mut last_err = String::new();
+            let mut stderr_lines: Vec<String> = Vec::new();
             let mut detected_device = String::new();
             if let Some(stderr) = stderr {
                 let reader = tokio::io::BufReader::new(stderr);
@@ -2369,11 +2520,30 @@ thread.join()
                     if line.starts_with("[device:") && line.ends_with(']') {
                         detected_device = line[8..line.len()-1].to_uppercase();
                     } else if !line.trim().is_empty() {
-                        last_err = line;
+                        stderr_lines.push(line);
                     }
                 }
             }
-            (last_err, detected_device)
+            // Extract meaningful error: find last traceback or last meaningful lines
+            let error_msg = {
+                let mut tb_start: Option<usize> = None;
+                for (i, l) in stderr_lines.iter().enumerate() {
+                    if l.starts_with("Traceback (most recent call last)") {
+                        tb_start = Some(i);
+                    }
+                }
+                if let Some(start) = tb_start {
+                    stderr_lines[start..].iter().take(30).cloned().collect::<Vec<_>>().join("\n")
+                } else {
+                    stderr_lines.iter().rev()
+                        .filter(|l| !l.starts_with("WARNING") && !l.contains("FutureWarning") && !l.contains("UserWarning"))
+                        .take(5)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .into_iter().rev().collect::<Vec<_>>().join("\n")
+                }
+            };
+            (error_msg, detected_device)
         });
 
         let status = loop {
@@ -2563,4 +2733,308 @@ pub async fn quantize_model(
         output_size: output_meta.len(),
         output_size_display: crate::model::format_file_size(output_meta.len()),
     })
+}
+
+// ── System Info ───────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SystemInfo {
+    pub total_ram_mb: u64,
+    pub available_ram_mb: u64,
+    pub used_ram_mb: u64,
+    pub cpu_name: String,
+    pub cpu_cores: usize,
+    pub cpu_threads: usize,
+}
+
+#[tauri::command]
+pub fn get_system_info() -> SystemInfo {
+    use sysinfo::System;
+
+    let mut sys = System::new();
+    sys.refresh_memory();
+    sys.refresh_cpu_all();
+
+    let total_ram_mb = sys.total_memory() / (1024 * 1024);
+    let available_ram_mb = sys.available_memory() / (1024 * 1024);
+    let used_ram_mb = sys.used_memory() / (1024 * 1024);
+
+    let cpu_name = sys.cpus().first()
+        .map(|c| c.brand().to_string())
+        .unwrap_or_else(|| "Unknown".to_string());
+    let cpu_cores = sys.physical_core_count().unwrap_or(0);
+    let cpu_threads = sys.cpus().len();
+
+    SystemInfo {
+        total_ram_mb,
+        available_ram_mb,
+        used_ram_mb,
+        cpu_name,
+        cpu_cores,
+        cpu_threads,
+    }
+}
+
+// ── App Settings Persistence ──────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AppSettings {
+    pub memory_limit_mb: Option<u64>,
+}
+
+#[tauri::command]
+pub fn load_settings(app: tauri::AppHandle) -> AppSettings {
+    let dir = app.path().app_data_dir().expect("No app data dir");
+    let path = dir.join("settings.json");
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<(), ModelError> {
+    let dir = app.path().app_data_dir().expect("No app data dir");
+    std::fs::create_dir_all(&dir).map_err(ModelError::IoError)?;
+    let path = dir.join("settings.json");
+    let json = serde_json::to_string_pretty(&settings)
+        .map_err(|e| ModelError::MergeError(e.to_string()))?;
+    std::fs::write(&path, json).map_err(ModelError::IoError)?;
+    Ok(())
+}
+
+// ── Convert Environment Commands ──────────────────────────
+
+#[tauri::command]
+pub async fn convert_clean_env(app: tauri::AppHandle) -> Result<(), ModelError> {
+    let convert_dir = get_convert_dir(&app)?;
+    if convert_dir.exists() {
+        std::fs::remove_dir_all(&convert_dir).map_err(ModelError::IoError)?;
+    }
+    Ok(())
+}
+
+// ── Dataset Hub Commands ──────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HfDatasetFileInfo {
+    pub rfilename: String,
+    pub size: Option<u64>,
+    pub size_display: String,
+    pub format: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HfDatasetRepoInfo {
+    pub id: String,
+    pub files: Vec<HfDatasetFileInfo>,
+}
+
+fn detect_dataset_format(filename: &str) -> Option<String> {
+    let lower = filename.to_lowercase();
+    if lower.ends_with(".parquet") {
+        Some("parquet".into())
+    } else if lower.ends_with(".json") {
+        Some("json".into())
+    } else if lower.ends_with(".jsonl") || lower.ends_with(".ndjson") {
+        Some("jsonl".into())
+    } else if lower.ends_with(".csv") {
+        Some("csv".into())
+    } else {
+        None
+    }
+}
+
+fn get_datasets_dir(app: &tauri::AppHandle) -> Result<PathBuf, ModelError> {
+    let data_dir = app.path().app_data_dir().map_err(|e| ModelError::ParseError {
+        format: "datastudio".into(),
+        reason: format!("Cannot resolve app data dir: {}", e),
+    })?;
+    Ok(data_dir.join("datasets"))
+}
+
+#[tauri::command]
+pub async fn hf_fetch_dataset_repo(repo_id: String) -> Result<HfDatasetRepoInfo, ModelError> {
+    let client = build_http_client()?;
+
+    let url = format!("https://huggingface.co/api/datasets/{}", repo_id);
+    let resp = client.get(&url).send().await.map_err(|e| ModelError::ParseError {
+        format: "datastudio".into(),
+        reason: format!("Failed to fetch dataset repo: {}", e),
+    })?;
+
+    if !resp.status().is_success() {
+        return Err(ModelError::ParseError {
+            format: "datastudio".into(),
+            reason: format!("Dataset not found or inaccessible (HTTP {})", resp.status()),
+        });
+    }
+
+    #[derive(Deserialize)]
+    struct DsApiResponse {
+        id: Option<String>,
+        siblings: Option<Vec<HfApiSibling>>,
+    }
+
+    let api_resp: DsApiResponse = resp.json().await.map_err(|e| ModelError::ParseError {
+        format: "datastudio".into(),
+        reason: format!("Failed to parse response: {}", e),
+    })?;
+
+    let repo_name = api_resp.id.unwrap_or_else(|| repo_id.to_string());
+    let siblings = api_resp.siblings.unwrap_or_default();
+
+    let mut files: Vec<HfDatasetFileInfo> = siblings
+        .into_iter()
+        .filter_map(|s| {
+            let format = detect_dataset_format(&s.rfilename);
+            if format.is_some() {
+                let size_display = s.size.map(|sz| crate::model::format_file_size(sz)).unwrap_or_else(|| "---".into());
+                Some(HfDatasetFileInfo {
+                    rfilename: s.rfilename,
+                    size: s.size,
+                    size_display,
+                    format,
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Sort: parquet first, then by size descending
+    files.sort_by(|a, b| {
+        let a_parquet = a.format.as_deref() == Some("parquet");
+        let b_parquet = b.format.as_deref() == Some("parquet");
+        b_parquet.cmp(&a_parquet)
+            .then_with(|| b.size.unwrap_or(0).cmp(&a.size.unwrap_or(0)))
+    });
+
+    Ok(HfDatasetRepoInfo {
+        id: repo_name,
+        files,
+    })
+}
+
+#[tauri::command]
+pub async fn hf_download_dataset_file(
+    repo_id: String,
+    filename: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, ModelError> {
+    let datasets_dir = get_datasets_dir(&app)?;
+    let repo_folder = datasets_dir.join(repo_id.replace('/', "--"));
+    std::fs::create_dir_all(&repo_folder).map_err(ModelError::IoError)?;
+
+    // Reset cancel flag
+    let cancel = state.download_cancel.clone();
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+
+    let download_url = format!(
+        "https://huggingface.co/datasets/{}/resolve/main/{}",
+        repo_id, filename
+    );
+
+    let client = build_http_client()?;
+
+    let resp = client.get(&download_url).send().await.map_err(|e| ModelError::ParseError {
+        format: "datastudio".into(),
+        reason: format!("Download request failed: {}", e),
+    })?;
+
+    if !resp.status().is_success() {
+        return Err(ModelError::ParseError {
+            format: "datastudio".into(),
+            reason: format!("Download failed (HTTP {})", resp.status()),
+        });
+    }
+
+    let total_size = resp.content_length().unwrap_or(0);
+
+    // Preserve directory structure within the repo folder
+    let out_path = repo_folder.join(&filename);
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent).map_err(ModelError::IoError)?;
+    }
+    let partial_path = repo_folder.join(format!("{}.partial", filename.replace('/', "_")));
+
+    let mut file = std::fs::File::create(&partial_path).map_err(ModelError::IoError)?;
+    let mut stream = resp.bytes_stream();
+    let mut downloaded: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+
+    let safe_name = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&filename)
+        .to_string();
+
+    while let Some(chunk) = stream.next().await {
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            drop(file);
+            let _ = std::fs::remove_file(&partial_path);
+            let _ = app.emit("datastudio:download-progress", DownloadProgress {
+                file_name: safe_name.clone(),
+                bytes_downloaded: downloaded,
+                bytes_total: total_size,
+                percent: 0.0,
+                status: "cancelled".into(),
+                files_done: None,
+                files_total: None,
+            });
+            return Err(ModelError::ParseError {
+                format: "datastudio".into(),
+                reason: "Download cancelled".into(),
+            });
+        }
+
+        let bytes = chunk.map_err(|e| ModelError::ParseError {
+            format: "datastudio".into(),
+            reason: format!("Download stream error: {}", e),
+        })?;
+
+        {
+            use std::io::Write;
+            file.write_all(&bytes).map_err(ModelError::IoError)?;
+        }
+        downloaded += bytes.len() as u64;
+
+        let now = std::time::Instant::now();
+        if now.duration_since(last_emit).as_millis() >= 500 || (total_size > 0 && downloaded >= total_size) {
+            let percent = if total_size > 0 {
+                (downloaded as f64 / total_size as f64) * 100.0
+            } else {
+                0.0
+            };
+            let _ = app.emit("datastudio:download-progress", DownloadProgress {
+                file_name: safe_name.clone(),
+                bytes_downloaded: downloaded,
+                bytes_total: total_size,
+                percent,
+                status: "downloading".into(),
+                files_done: None,
+                files_total: None,
+            });
+            last_emit = now;
+        }
+    }
+
+    drop(file);
+
+    // Rename partial to final
+    std::fs::rename(&partial_path, &out_path).map_err(ModelError::IoError)?;
+
+    // Emit completion
+    let _ = app.emit("datastudio:download-progress", DownloadProgress {
+        file_name: safe_name,
+        bytes_downloaded: downloaded,
+        bytes_total: downloaded,
+        percent: 100.0,
+        status: "complete".into(),
+        files_done: None,
+        files_total: None,
+    });
+
+    Ok(out_path.to_string_lossy().to_string())
 }

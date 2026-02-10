@@ -1,12 +1,12 @@
 ---
 title: "GPU Setup"
-description: "Configure GPU acceleration for inference and conversion"
+description: "Configure GPU acceleration for inference, training, and conversion"
 icon: "microchip"
 ---
 
 # GPU Setup
 
-ForgeAI uses GPU acceleration for inference (Test module) and model conversion (Convert module).
+ForgeAI uses GPU acceleration for inference (Test module), fine-tuning (Training module), and model conversion (Convert module).
 
 ## Auto-Detection
 
@@ -50,15 +50,31 @@ For GGUF inference and quantization, install the appropriate llama.cpp variant:
   </Tab>
 </Tabs>
 
-## SafeTensors Inference (Python)
+## Python Environments (Training & Convert)
 
-The Test module uses HuggingFace Transformers for SafeTensors models:
+ForgeAI manages two separate Python virtual environments, each with GPU-aware PyTorch:
 
-- **NVIDIA GPU detected**: PyTorch is installed with CUDA support automatically during Convert module setup
+### Training Environment
+Used by the [Training module](/modules/training) for LoRA, QLoRA, SFT, DPO, and full fine-tuning:
+
+- **NVIDIA GPU detected**: PyTorch is installed with CUDA support automatically during setup
+- **No GPU**: CPU-only PyTorch (training will be slow)
+- Includes: `transformers`, `peft`, `trl`, `bitsandbytes`, `datasets`
+
+### Convert Environment
+Used by the [Convert module](/modules/convert) for SafeTensors-to-GGUF conversion and by Test for SafeTensors inference:
+
+- **NVIDIA GPU detected**: PyTorch is installed with CUDA support automatically during setup
 - **No GPU**: CPU-only PyTorch is installed
 - **OOM fallback**: If the model doesn't fit in GPU VRAM, ForgeAI automatically falls back to CPU inference
 
+<Note>
+  Both environments can be managed (viewed, cleaned, deleted) in [Settings](/modules/settings).
+</Note>
+
 ## VRAM Requirements
+
+### Inference
 
 Approximate VRAM needed to load models on GPU:
 
@@ -72,6 +88,22 @@ Approximate VRAM needed to load models on GPU:
   If your model exceeds VRAM, GGUF inference via llama.cpp can offload some layers to CPU RAM. SafeTensors inference will auto-fallback to full CPU mode.
 </Tip>
 
+### Training
+
+Approximate VRAM needed for fine-tuning a 7B model:
+
+| Method | Minimum VRAM | Recommended |
+|--------|:------------:|:-----------:|
+| QLoRA (4-bit) | 4 GB | 8 GB |
+| LoRA | 6 GB | 12 GB |
+| SFT | 8 GB | 16 GB |
+| DPO | 8 GB | 16 GB |
+| Full Fine-Tune | 16 GB | 24+ GB |
+
+<Tip>
+  Layer surgery (remove/duplicate layers) is pure Rust and requires **no** GPU or Python — it works on any system.
+</Tip>
+
 ## Troubleshooting
 
 | Issue | Solution |
@@ -79,5 +111,7 @@ Approximate VRAM needed to load models on GPU:
 | GPU not detected | Update NVIDIA/Vulkan drivers |
 | CUDA variant fails to install | Ensure NVIDIA drivers are 515+ |
 | Slow inference despite GPU | Check Settings to confirm CUDA/Vulkan variant is installed, not CPU |
-| Out of memory | Use a smaller quantization (Q4\_K\_M instead of Q8\_0) or switch to CPU |
+| Out of memory (inference) | Use a smaller quantization (Q4\_K\_M instead of Q8\_0) or switch to CPU |
+| Out of memory (training) | Switch to QLoRA, reduce batch size or max\_seq\_length |
 | SafeTensors shows CPU device | Re-run Convert module setup to reinstall PyTorch with CUDA |
+| Training not using GPU | Verify CUDA is available in Settings → Training Environment |

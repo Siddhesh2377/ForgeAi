@@ -4,6 +4,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+use crate::merge::capabilities::CapabilityReport;
 use crate::merge::registry::ParentModel;
 use crate::merge::tensor_io;
 use crate::model::error::ModelError;
@@ -20,7 +21,7 @@ pub struct LayerCategory {
     pub description: String,
 }
 
-/// The 8 categories a layer can be classified into.
+/// All 18 layer categories with display metadata.
 pub fn all_categories() -> Vec<LayerCategory> {
     vec![
         LayerCategory {
@@ -70,6 +71,67 @@ pub fn all_categories() -> Vec<LayerCategory> {
             label: "HEAD".into(),
             color: "#94a3b8".into(),
             description: "Output head & final projection".into(),
+        },
+        // ── Extended categories (capability-aware) ──
+        LayerCategory {
+            id: "tool".into(),
+            label: "TOOL".into(),
+            color: "#06b6d4".into(),
+            description: "Tool-calling & function invocation".into(),
+        },
+        LayerCategory {
+            id: "safety".into(),
+            label: "SAFETY".into(),
+            color: "#ef4444".into(),
+            description: "Safety alignment & guardrails".into(),
+        },
+        LayerCategory {
+            id: "creative".into(),
+            label: "CREATE".into(),
+            color: "#d946ef".into(),
+            description: "Creative generation & style".into(),
+        },
+        LayerCategory {
+            id: "math".into(),
+            label: "MATH".into(),
+            color: "#14b8a6".into(),
+            description: "Mathematical reasoning".into(),
+        },
+        LayerCategory {
+            id: "code".into(),
+            label: "CODE".into(),
+            color: "#22d3ee".into(),
+            description: "Code generation & programming".into(),
+        },
+        LayerCategory {
+            id: "instruct".into(),
+            label: "INSTRUCT".into(),
+            color: "#f97316".into(),
+            description: "Instruction following & alignment".into(),
+        },
+        LayerCategory {
+            id: "memory".into(),
+            label: "MEMORY".into(),
+            color: "#8b5cf6".into(),
+            description: "Long-range context & recall".into(),
+        },
+        LayerCategory {
+            id: "multi".into(),
+            label: "MULTI".into(),
+            color: "#ec4899".into(),
+            description: "Cross-modal processing".into(),
+        },
+        LayerCategory {
+            id: "sparse".into(),
+            label: "SPARSE".into(),
+            color: "#eab308".into(),
+            description: "Mixture-of-Experts routing".into(),
+        },
+        LayerCategory {
+            id: "compress".into(),
+            label: "COMPRESS".into(),
+            color: "#6b7280".into(),
+            description: "Information compression & bottleneck".into(),
         },
     ]
 }
@@ -160,6 +222,7 @@ pub fn analyze_parent(
     app: &AppHandle,
     parent: &ParentModel,
     cancel: Arc<AtomicBool>,
+    capabilities: Option<&CapabilityReport>,
 ) -> Result<AnalysisResult, ModelError> {
     let total_layers = parent.layer_count.unwrap_or(0);
     if total_layers == 0 {
@@ -173,7 +236,7 @@ pub fn analyze_parent(
     }
 
     // Phase 1: Collect raw stats for all layers
-    let mut raw_stats: Vec<(u64, f64, f64, usize, usize, usize)> = Vec::new();
+    let mut raw_stats: Vec<(u64, f64, f64, usize, usize, usize, Vec<String>)> = Vec::new();
 
     for layer_idx in 0..total_layers {
         if cancel.load(Ordering::Relaxed) {
@@ -196,11 +259,13 @@ pub fn analyze_parent(
         let mut attn_count = 0usize;
         let mut mlp_count = 0usize;
         let mut norm_names = Vec::new();
+        let mut layer_tensor_names = Vec::new();
 
-        for name in &parent.compat.tensor_names {
+        for name in &parent.compat.tensor_names() {
             if !name.contains(&layer_prefix1) && !name.contains(&layer_prefix2) {
                 continue;
             }
+            layer_tensor_names.push(name.clone());
             let class = inspect::classify_tensor(name);
             match class {
                 "attention" => attn_count += 1,
@@ -242,7 +307,7 @@ pub fn analyze_parent(
             layer_var /= loaded_count as f64;
         }
 
-        raw_stats.push((layer_idx, layer_l2, layer_var, attn_count, mlp_count, norm_names.len()));
+        raw_stats.push((layer_idx, layer_l2, layer_var, attn_count, mlp_count, norm_names.len(), layer_tensor_names));
     }
 
     // Phase 2: Normalize stats across all layers
@@ -260,7 +325,7 @@ pub fn analyze_parent(
     // Phase 3: Classify each layer
     let mut layers = Vec::new();
 
-    for (layer_idx, l2, var, attn_count, mlp_count, norm_count) in &raw_stats {
+    for (layer_idx, l2, var, attn_count, mlp_count, norm_count, layer_tensor_names) in &raw_stats {
         if cancel.load(Ordering::Relaxed) {
             return Err(ModelError::MergeCancelled);
         }
@@ -282,8 +347,11 @@ pub fn analyze_parent(
         let total_tensors = (*attn_count + *mlp_count).max(1) as f64;
         let mlp_dominance = *mlp_count as f64 / total_tensors;
 
-        // Classification using position + normalized tensor stats
-        let (cat_id, confidence) = classify_layer(position, l2_z, var_z, mlp_dominance);
+        // Classification using position + normalized tensor stats + capabilities
+        let (cat_id, confidence) = classify_layer(
+            position, l2_z, var_z, mlp_dominance,
+            capabilities, *layer_idx, layer_tensor_names,
+        );
         let cat = get_category(cat_id);
 
         let analysis = LayerAnalysis {
@@ -314,13 +382,114 @@ pub fn analyze_parent(
     })
 }
 
-/// Classify a single layer based on position and normalized statistics.
+/// Check if a capability is detected in the report.
+fn has_capability(caps: Option<&CapabilityReport>, id: &str) -> bool {
+    caps.map_or(false, |r| r.capabilities.iter().any(|c| c.id == id && c.detected))
+}
+
+/// Check if a layer index falls within a capability's affected range.
+fn in_capability_range(caps: Option<&CapabilityReport>, cap_id: &str, layer_idx: u64) -> bool {
+    caps.map_or(false, |r| {
+        r.capabilities.iter().any(|c| c.id == cap_id && c.detected && c.affected_layers.contains(&layer_idx))
+    })
+}
+
+/// Classify a single layer based on position, normalized statistics,
+/// capability info, and tensor name patterns.
 ///
 /// Position is the primary signal (well-established from research).
-/// Tensor stats refine the boundaries: layers with high MLP norm L2
-/// indicate knowledge storage; high variance indicates specialization;
-/// high MLP dominance in late layers suggests expert/task processing.
-fn classify_layer(position: f64, l2_z: f64, var_z: f64, mlp_dom: f64) -> (&'static str, f64) {
+/// Tensor stats refine the boundaries. Capability detection provides
+/// additional context to override the base heuristic when model-specific
+/// signals are present.
+fn classify_layer(
+    position: f64,
+    l2_z: f64,
+    var_z: f64,
+    mlp_dom: f64,
+    capabilities: Option<&CapabilityReport>,
+    layer_idx: u64,
+    layer_tensor_names: &[String],
+) -> (&'static str, f64) {
+    // ── Structural overrides (from tensor names) ────────
+    let lower_names: Vec<String> = layer_tensor_names.iter().map(|n| n.to_lowercase()).collect();
+
+    // MoE / sparse expert layers
+    if lower_names.iter().any(|n| n.contains("experts.") || n.contains("router.")) {
+        return ("sparse", 0.95);
+    }
+
+    // Multimodal / vision layers
+    if lower_names.iter().any(|n| n.contains("visual") || n.contains("image_") || n.contains("vision_") || n.contains("vit.") || n.contains("clip.")) {
+        return ("multi", 0.90);
+    }
+
+    // ── Base heuristic classification ───────────────────
+    let (base_cat, base_conf) = classify_layer_base(position, l2_z, var_z, mlp_dom);
+
+    // ── Capability-aware refinements ────────────────────
+    // These override the base only when both the capability is detected AND
+    // the layer position falls in the expected range for that capability.
+
+    // Tool calling: late layers with high MLP dominance
+    if has_capability(capabilities, "tool_calling")
+        && in_capability_range(capabilities, "tool_calling", layer_idx)
+        && mlp_dom > 0.5
+        && position > 0.55
+    {
+        return ("tool", 0.75);
+    }
+
+    // Code generation: late layers with high L2 norms
+    if has_capability(capabilities, "code")
+        && in_capability_range(capabilities, "code", layer_idx)
+        && l2_z > 0.3
+        && position > 0.55
+    {
+        return ("code", 0.70);
+    }
+
+    // Math reasoning: mid-late layers
+    if has_capability(capabilities, "math")
+        && in_capability_range(capabilities, "math", layer_idx)
+        && position > 0.50
+        && position < 0.88
+    {
+        return ("math", 0.70);
+    }
+
+    // Safety alignment: very late layers
+    if has_capability(capabilities, "safety")
+        && in_capability_range(capabilities, "safety", layer_idx)
+        && position > 0.75
+    {
+        return ("safety", 0.65);
+    }
+
+    // Instruction following: early-mid to mid layers
+    if has_capability(capabilities, "instruct")
+        && in_capability_range(capabilities, "instruct", layer_idx)
+        && position > 0.18
+        && position < 0.55
+    {
+        return ("instruct", 0.65);
+    }
+
+    // Creative synthesis: late synthesis layers with no specific capability match
+    if base_cat == "synthesis" && position > 0.85 && position < 0.97 {
+        // If no strong capability override, call it creative
+        let any_specific = has_capability(capabilities, "tool_calling")
+            || has_capability(capabilities, "code")
+            || has_capability(capabilities, "safety");
+        if !any_specific {
+            return ("creative", 0.65);
+        }
+    }
+
+    (base_cat, base_conf)
+}
+
+/// Base heuristic classification (the original 8-type system).
+fn classify_layer_base(position: f64, l2_z: f64, var_z: f64, mlp_dom: f64) -> (&'static str, f64) {
     // Very early: embedding
     if position < 0.05 {
         return ("embed", 0.95);
@@ -329,7 +498,6 @@ fn classify_layer(position: f64, l2_z: f64, var_z: f64, mlp_dom: f64) -> (&'stat
     // Early: syntax vs language
     if position < 0.20 {
         if l2_z > 0.5 || var_z > 0.5 {
-            // High norm activity → active syntactic processing
             return ("syntax", 0.80 + var_z.abs().min(0.15));
         }
         return ("syntax", 0.75);
@@ -338,7 +506,6 @@ fn classify_layer(position: f64, l2_z: f64, var_z: f64, mlp_dom: f64) -> (&'stat
     // Early-mid: language understanding
     if position < 0.35 {
         if mlp_dom > 0.55 && l2_z > 0.3 {
-            // MLP-heavy early-mid → knowledge emerging
             return ("knowledge", 0.70);
         }
         return ("language", 0.75 + (position - 0.20) / 0.15 * 0.1);
@@ -347,11 +514,9 @@ fn classify_layer(position: f64, l2_z: f64, var_z: f64, mlp_dom: f64) -> (&'stat
     // Mid: knowledge vs context
     if position < 0.55 {
         if mlp_dom > 0.5 && l2_z > 0.0 {
-            // High MLP dominance + high norms → factual knowledge storage
             return ("knowledge", 0.80 + l2_z.min(0.15));
         }
         if var_z > 0.5 {
-            // High variance → beginning of reasoning
             return ("reasoning", 0.65);
         }
         return ("language", 0.70);
@@ -360,7 +525,6 @@ fn classify_layer(position: f64, l2_z: f64, var_z: f64, mlp_dom: f64) -> (&'stat
     // Mid-late: reasoning
     if position < 0.72 {
         if var_z > 0.8 || l2_z > 1.0 {
-            // Very high activity → expert processing emerging
             return ("expert", 0.70);
         }
         return ("reasoning", 0.80 + (position - 0.55) / 0.17 * 0.1);
@@ -369,11 +533,9 @@ fn classify_layer(position: f64, l2_z: f64, var_z: f64, mlp_dom: f64) -> (&'stat
     // Late: expert vs synthesis
     if position < 0.88 {
         if l2_z > 0.5 && var_z > 0.3 {
-            // High activity + high variance → specialized expert
             return ("expert", 0.80 + l2_z.min(0.15));
         }
         if mlp_dom > 0.55 {
-            // MLP-heavy late → task-specific computation
             return ("expert", 0.75);
         }
         return ("synthesis", 0.75);

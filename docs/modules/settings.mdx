@@ -1,28 +1,32 @@
 ---
 title: "Settings"
-description: "Configure appearance, manage GPU detection, and install llama.cpp tools"
+description: "Configure appearance, manage GPU detection, and control all three tool environments"
 icon: "gear"
 ---
 
 # Settings (07)
 
-Configure appearance, GPU, and llama.cpp tool management.
+Configure appearance, detect GPU hardware, and manage all three tool environments — llama.cpp, Training, and Convert — from one place.
 
-## Theme
+<img src="/images/light/settings.png" alt="Settings" />
+
+## Appearance
+
+### Theme
 
 | Theme | Description |
 |-------|-------------|
-| **Dark** (default) | Dark background with monochrome + amber accents |
-| **Light** | Light background variant |
+| **Dark** (default) | Dark background (#0a0a0a) with monochrome + amber accents |
+| **Light** | Light background (#fafafa) variant |
 
-Click a theme card to switch. Changes apply immediately.
+Click the theme toggle in the header to switch. Changes apply immediately.
 
-## Layout
+### Font Settings
 
-| Layout | Description |
-|--------|-------------|
-| **Stretched** | Content fills the full window width |
-| **Centered** | Content constrained to a max width |
+| Setting | Options |
+|---------|---------|
+| **Font Family** | System monospace fonts (JetBrains Mono preferred) |
+| **Font Size** | Adjustable base font size |
 
 ## GPU Detection
 
@@ -37,27 +41,42 @@ ForgeAI auto-detects your hardware:
 | METAL | Metal support (macOS) |
 | RECOMMENDED | Suggested llama.cpp variant |
 
-## llama.cpp Tools
+## Environment Management
 
-Required for GGUF quantization (Optimize) and GGUF inference (Test).
+All three tool environments are managed from Settings:
 
-### Install
+### llama.cpp Tools
 
-<Steps>
-  <Step title="Review recommendation">
-    Check the recommended variant from GPU detection
-  </Step>
-  <Step title="Select variant">
-    **CPU** (universal), **CUDA** (NVIDIA, fastest), or **VULKAN** (cross-platform GPU)
-  </Step>
-  <Step title="Download">
-    Click **DOWNLOAD & INSTALL**
-  </Step>
-</Steps>
+Required for GGUF quantization (Compress) and GGUF inference (Test).
 
-### Manage
+| State | Actions |
+|-------|---------|
+| **Not installed** | Select variant (CPU/CUDA/Vulkan) → **DOWNLOAD & INSTALL** |
+| **Installed** | View version, path → **REINSTALL** or **REMOVE** |
 
-When installed: version info, path, **REINSTALL** and **REMOVE** buttons.
+### Training Environment
+
+Python virtual environment for fine-tuning (PyTorch + PEFT + TRL + BitsAndBytes).
+
+| State | Display |
+|-------|---------|
+| **Not installed** | "Install from Training page" |
+| **Installed** | Python version, venv status, package list, CUDA availability |
+| **Partial** | Missing packages highlighted |
+
+Actions: **CLEAN/DELETE** to remove the environment and start fresh.
+
+### Convert Environment
+
+Python virtual environment for SafeTensors → GGUF conversion.
+
+| State | Display |
+|-------|---------|
+| **Not installed** | "Install from Convert page" |
+| **Installed** | Python version, venv status, script, packages |
+| **Partial** | Missing packages highlighted |
+
+Actions: **CLEAN/DELETE** to remove the environment and start fresh.
 
 ## Color Semantics
 

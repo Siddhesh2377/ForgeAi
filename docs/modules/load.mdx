@@ -6,7 +6,9 @@ icon: "upload"
 
 # Load (01)
 
-The Load module imports AI models into ForgeAI. It parses model headers without reading the full file, extracting metadata, tensor maps, and architecture information.
+The Load module imports AI models into ForgeAI. It parses model headers without reading the full file, extracting metadata, tensor maps, and architecture information in under a second.
+
+<img src="/images/light/load-light.png" alt="Load Module" />
 
 ## Load Options
 
@@ -26,7 +28,7 @@ The Load module imports AI models into ForgeAI. It parses model headers without 
 
 On load, ForgeAI reads the model header and extracts:
 
-- **Architecture** (e.g., LlamaForCausalLM, MistralForCausalLM)
+- **Architecture** (e.g., LlamaForCausalLM, MistralForCausalLM, Qwen2ForCausalLM)
 - **Layer count** and context length
 - **Embedding dimensions**
 - **Parameter count** (computed from tensor shapes)
@@ -46,13 +48,24 @@ For folder-based models, it additionally detects:
 | STATUS | IDLE, LOADING, LOADED, ERROR |
 | FORMAT | GGUF or SAFETENSORS |
 | SIZE | File size on disk |
-| PARAMS | Parameter count |
+| PARAMS | Parameter count (e.g., 7.24B) |
 | TENSORS | Total tensor count |
-| QUANT | Quantization type |
+| QUANT | Quantization type (e.g., Q4\_K\_M) |
 
 ## Metadata Grid
 
-After loading, a grid displays architecture, layers, context length, embedding dimension, quantization, tensors, parameters, and file size.
+After loading, a grid displays key model properties:
+
+| Field | Description |
+|-------|-------------|
+| ARCHITECTURE | Model family (LlamaForCausalLM, etc.) |
+| LAYERS | Number of transformer layers |
+| CONTEXT | Maximum sequence length |
+| EMBEDDING | Hidden dimension size |
+| QUANT | Quantization type |
+| TENSORS | Total tensor count |
+| PARAMS | Parameter count |
+| SIZE | File size on disk |
 
 ## Tensor Map Preview
 
@@ -75,6 +88,10 @@ A scrollable list of the first 20 metadata key-value pairs from the model header
     Header parsing takes under 1 second. Review model metadata, tensor map, and raw metadata.
   </Step>
   <Step title="Use the model">
-    The model is now available in Inspect, Optimize, Test, and other modules. Click **UNLOAD** to clear it.
+    The model is now available in Inspect, Compress, Convert, Training, M-DNA, and Test modules. Click **UNLOAD** to clear it.
   </Step>
 </Steps>
+
+<Tip>
+  Loading only parses the header — it does not load the full model into memory, so even 70B+ models load instantly.
+</Tip>

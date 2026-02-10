@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300">
+  <!-- Background -->
+  <rect width="1200" height="300" fill="#0a0a0a"/>
+
+  <!-- Border -->
+  <rect x="8" y="8" width="1184" height="284" fill="none" stroke="#262626" stroke-width="1"/>
+
+  <!-- Corner marks -->
+  <path d="M20 40 L20 16 L44 16" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="square"/>
+  <path d="M1156 16 L1180 16 L1180 40" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="square"/>
+  <path d="M20 260 L20 284 L44 284" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="square"/>
+  <path d="M1156 284 L1180 284 L1180 260" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="square"/>
+
+  <!-- Anvil icon (small, left) -->
+  <g transform="translate(120, 100)">
+    <rect x="0" y="60" width="80" height="12" fill="#f59e0b"/>
+    <rect x="14" y="48" width="52" height="12" fill="#f59e0b"/>
+    <rect x="-8" y="36" width="96" height="16" fill="#f59e0b"/>
+    <polygon points="88,44 110,42 88,36" fill="#f59e0b"/>
+    <polygon points="-8,36 -8,44 -18,42" fill="#f59e0b"/>
+    <!-- Hammer -->
+    <rect x="28" y="-10" width="5" height="42" rx="1" fill="#ffffff" transform="rotate(-25 30 12)"/>
+    <rect x="14" y="-16" width="28" height="14" rx="1" fill="#ffffff" transform="rotate(-25 28 -8)"/>
+    <!-- Sparks -->
+    <circle cx="70" cy="10" r="3" fill="#f59e0b" opacity="0.8"/>
+    <circle cx="82" cy="0" r="2" fill="#f59e0b" opacity="0.6"/>
+    <circle cx="88" cy="16" r="1.5" fill="#f59e0b" opacity="0.4"/>
+  </g>
+
+  <!-- FORGEAI text -->
+  <text x="320" y="160" font-family="monospace" font-weight="700" font-size="72" letter-spacing="0.15em" fill="#f59e0b">FORGE</text>
+  <text x="686" y="160" font-family="monospace" font-weight="700" font-size="72" letter-spacing="0.15em" fill="#ffffff">AI</text>
+
+  <!-- Tagline -->
+  <text x="320" y="200" font-family="monospace" font-weight="400" font-size="16" letter-spacing="0.2em" fill="#525252">YOUR LOCAL AI MODEL WORKSHOP</text>
+
+  <!-- Version badge -->
+  <rect x="320" y="220" width="60" height="20" fill="none" stroke="#f59e0b" stroke-width="1"/>
+  <text x="350" y="234" text-anchor="middle" font-family="monospace" font-weight="600" font-size="10" letter-spacing="0.1em" fill="#f59e0b">v0.1.0</text>
+
+  <!-- Tech badges -->
+  <text x="400" y="234" font-family="monospace" font-weight="400" font-size="10" letter-spacing="0.1em" fill="#525252">TAURI v2</text>
+  <text x="496" y="234" font-family="monospace" font-weight="400" font-size="10" fill="#3a3a3a">|</text>
+  <text x="510" y="234" font-family="monospace" font-weight="400" font-size="10" letter-spacing="0.1em" fill="#525252">SVELTE 5</text>
+  <text x="610" y="234" font-family="monospace" font-weight="400" font-size="10" fill="#3a3a3a">|</text>
+  <text x="624" y="234" font-family="monospace" font-weight="400" font-size="10" letter-spacing="0.1em" fill="#525252">RUST</text>
+
+  <!-- Barcode decoration (right side) -->
+  <g transform="translate(1050, 130)">
+    <rect x="0" y="0" width="2" height="40" fill="#262626"/>
+    <rect x="5" y="0" width="1" height="40" fill="#262626"/>
+    <rect x="9" y="0" width="3" height="40" fill="#262626"/>
+    <rect x="15" y="0" width="1" height="40" fill="#262626"/>
+    <rect x="19" y="0" width="2" height="40" fill="#262626"/>
+    <rect x="24" y="0" width="1" height="40" fill="#262626"/>
+    <rect x="28" y="0" width="3" height="40" fill="#262626"/>
+    <rect x="34" y="0" width="1" height="40" fill="#262626"/>
+    <rect x="38" y="0" width="2" height="40" fill="#262626"/>
+    <rect x="43" y="0" width="1" height="40" fill="#262626"/>
+    <rect x="47" y="0" width="3" height="40" fill="#262626"/>
+    <rect x="53" y="0" width="2" height="40" fill="#262626"/>
+    <rect x="58" y="0" width="1" height="40" fill="#262626"/>
+    <rect x="62" y="0" width="2" height="40" fill="#262626"/>
+    <text x="32" y="52" text-anchor="middle" font-family="monospace" font-size="8" fill="#3a3a3a">FRG-001</text>
+  </g>
+</svg>

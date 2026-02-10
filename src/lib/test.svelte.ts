@@ -8,6 +8,19 @@ export interface TestResult {
   device: string;
 }
 
+export interface GenerateOptions {
+  modelPath: string;
+  prompt: string;
+  maxTokens: number;
+  temperature: number;
+  topP?: number | null;
+  topK?: number | null;
+  repeatPenalty?: number | null;
+  gpuLayers?: number | null;
+  systemPrompt?: string | null;
+  contextSize?: number | null;
+}
+
 class TestStore {
   generating = $state(false);
   output = $state("");
@@ -16,12 +29,7 @@ class TestStore {
 
   private tokenUnlisten: UnlistenFn | null = null;
 
-  async generate(
-    modelPath: string,
-    prompt: string,
-    maxTokens: number,
-    temperature: number,
-  ) {
+  async generate(opts: GenerateOptions) {
     if (!this.tokenUnlisten) {
       this.tokenUnlisten = await listen<string>("test:token", (e) => {
         this.output += e.payload;
@@ -35,10 +43,16 @@ class TestStore {
 
     try {
       this.result = await invoke<TestResult>("test_generate", {
-        modelPath,
-        prompt,
-        maxTokens,
-        temperature,
+        modelPath: opts.modelPath,
+        prompt: opts.prompt,
+        maxTokens: opts.maxTokens,
+        temperature: opts.temperature,
+        topP: opts.topP ?? null,
+        topK: opts.topK ?? null,
+        repeatPenalty: opts.repeatPenalty ?? null,
+        gpuLayers: opts.gpuLayers ?? null,
+        systemPrompt: opts.systemPrompt ?? null,
+        contextSize: opts.contextSize ?? null,
       });
     } catch (e) {
       const msg = String(e);

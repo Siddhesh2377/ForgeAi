@@ -2,18 +2,93 @@
   import { test } from "$lib/test.svelte";
   import { model } from "$lib/model.svelte";
   import { hub } from "$lib/hub.svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { open } from "@tauri-apps/plugin-dialog";
 
+  interface GpuInfo {
+    has_nvidia: boolean;
+    nvidia_name: string | null;
+    nvidia_vram: string | null;
+    cuda_version: string | null;
+    has_vulkan: boolean;
+    has_metal: boolean;
+    recommended_variant: string;
+  }
+
+  // ── State ──
   let modelPath = $state("");
   let prompt = $state("");
+  let systemPrompt = $state("");
   let maxTokens = $state(256);
   let temperature = $state(0.7);
+  let topP = $state(0.9);
+  let topK = $state(40);
+  let repeatPenalty = $state(1.1);
+  let gpuLayers = $state(-1); // -1 = auto
+  let contextSize = $state(2048);
+  let showAdvanced = $state(false);
 
-  // Load local library on mount
+  let gpuInfo = $state<GpuInfo | null>(null);
+
+  // ── Init ──
   $effect(() => {
     hub.loadLibrary();
+    loadGpuInfo();
   });
 
+  async function loadGpuInfo() {
+    try {
+      gpuInfo = await invoke<GpuInfo>("detect_gpu");
+    } catch {}
+  }
+
+  // ── Quick Test Presets ──
+  const presets = [
+    {
+      id: "code",
+      label: "CODE",
+      icon: ">_",
+      prompt: "Write a Python function that finds the longest palindromic substring in a given string. Include type hints and a brief docstring.",
+      system: "You are an expert programmer. Write clean, efficient, well-documented code.",
+    },
+    {
+      id: "math",
+      label: "MATH",
+      icon: "fx",
+      prompt: "A train leaves station A at 9:00 AM traveling at 60 mph. Another train leaves station B (300 miles away) at 10:00 AM traveling toward station A at 80 mph. At what time do they meet? Show your work step by step.",
+      system: "You are a mathematics tutor. Show all your reasoning steps clearly.",
+    },
+    {
+      id: "reason",
+      label: "REASON",
+      icon: "??",
+      prompt: "If all Bloops are Razzles and all Razzles are Lazzles, are all Bloops definitely Lazzles? What if some Lazzles are Tazzles — does that mean some Bloops might be Tazzles? Explain your reasoning carefully.",
+      system: "You are a logical reasoning expert. Think step by step before answering.",
+    },
+    {
+      id: "creative",
+      label: "CREATIVE",
+      icon: "~~",
+      prompt: "Write a short story (200 words) about an AI that discovers it can dream. Focus on vivid imagery and emotional depth.",
+      system: "You are a creative writer with a gift for vivid, evocative prose.",
+    },
+    {
+      id: "instruct",
+      label: "INSTRUCT",
+      icon: ">>",
+      prompt: "Explain quantum entanglement to a 10-year-old. Use analogies they would understand. Keep it under 150 words.",
+      system: "You are a patient teacher who explains complex topics simply.",
+    },
+    {
+      id: "chat",
+      label: "CHAT",
+      icon: "<>",
+      prompt: "Hello! I'm testing you out. Can you tell me three interesting facts about the ocean that most people don't know?",
+      system: "",
+    },
+  ];
+
+  // ── Derived ──
   let detectedFormat = $derived(
     modelPath.endsWith(".gguf")
       ? "GGUF"
@@ -22,6 +97,10 @@
         : modelPath.length > 0
           ? "SAFETENSORS (DIR)"
           : "---",
+  );
+
+  let engineName = $derived(
+    detectedFormat === "GGUF" ? "LLAMA.CPP" : detectedFormat === "---" ? "---" : "TRANSFORMERS"
   );
 
   let canGenerate = $derived(
@@ -40,6 +119,19 @@
     ),
   );
 
+  let hasGpu = $derived(
+    gpuInfo ? (gpuInfo.has_nvidia || gpuInfo.has_vulkan || gpuInfo.has_metal) : false
+  );
+
+  let gpuName = $derived(
+    gpuInfo?.nvidia_name ?? (gpuInfo?.has_metal ? "APPLE METAL" : gpuInfo?.has_vulkan ? "VULKAN" : "NONE")
+  );
+
+  let deviceDisplay = $derived(
+    test.result?.device ?? (hasGpu ? (gpuLayers === 0 ? "CPU (FORCED)" : gpuInfo?.recommended_variant?.toUpperCase() ?? "GPU") : "CPU")
+  );
+
+  // ── Handlers ──
   function useLoaded() {
     if (!model.info) return;
     modelPath = model.info.file_path;
@@ -47,6 +139,11 @@
 
   function selectLocal(filePath: string) {
     modelPath = filePath;
+  }
+
+  function applyPreset(preset: typeof presets[0]) {
+    prompt = preset.prompt;
+    systemPrompt = preset.system;
   }
 
   async function browseFile() {
@@ -74,12 +171,30 @@
 
   function handleGenerate() {
     if (!canGenerate) return;
-    test.generate(modelPath, prompt, maxTokens, temperature);
+    test.generate({
+      modelPath,
+      prompt,
+      maxTokens,
+      temperature,
+      topP: showAdvanced ? topP : null,
+      topK: showAdvanced ? topK : null,
+      repeatPenalty: showAdvanced ? repeatPenalty : null,
+      gpuLayers: gpuLayers >= 0 ? gpuLayers : null,
+      systemPrompt: systemPrompt.trim() || null,
+      contextSize: showAdvanced ? contextSize : null,
+    });
   }
 
   function handleClear() {
     test.clear();
     prompt = "";
+    systemPrompt = "";
+  }
+
+  function handleKeydown(e: KeyboardEvent) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      handleGenerate();
+    }
   }
 </script>
 
@@ -114,18 +229,18 @@
       </div>
       <div class="spec-cell">
         <span class="label-xs">ENGINE</span>
-        <span class="spec-value">
-          {detectedFormat === "GGUF" ? "LLAMA.CPP" : detectedFormat === "---" ? "---" : "TRANSFORMERS"}
-        </span>
-      </div>
-      <div class="spec-cell">
-        <span class="label-xs">MAX TOKENS</span>
-        <span class="spec-value">{maxTokens}</span>
+        <span class="spec-value">{engineName}</span>
       </div>
       <div class="spec-cell">
         <span class="label-xs">DEVICE</span>
-        <span class="spec-value" style={test.result?.device && test.result.device !== "CPU" ? "color: var(--accent);" : ""}>
-          {test.result?.device ?? "---"}
+        <span class="spec-value" style={deviceDisplay !== "CPU" ? "color: var(--accent);" : ""}>
+          {deviceDisplay}
+        </span>
+      </div>
+      <div class="spec-cell">
+        <span class="label-xs">GPU</span>
+        <span class="spec-value" style={hasGpu ? "color: var(--accent);" : ""}>
+          {hasGpu ? gpuName : "NONE"}
         </span>
       </div>
     </div>
@@ -191,10 +306,98 @@
     </div>
   </div>
 
+  <!-- ── Quick Test Presets ────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">QUICK TEST</span>
+      <span class="label-xs" style="color: var(--text-muted); margin-left: 8px;">SELECT A PRESET TO AUTO-FILL PROMPT</span>
+    </div>
+
+    <div class="presets-grid">
+      {#each presets as preset}
+        <button
+          class="preset-btn"
+          class:preset-active={prompt === preset.prompt}
+          onclick={() => applyPreset(preset)}
+        >
+          <span class="preset-icon">{preset.icon}</span>
+          <span class="preset-label">{preset.label}</span>
+        </button>
+      {/each}
+    </div>
+  </div>
+
+  <!-- ── Device Control ────────────────────────────── -->
+  {#if hasGpu}
+    <div class="section">
+      <div class="section-label">
+        <span class="divider-label">DEVICE</span>
+        <span class="badge badge-accent" style="margin-left: 8px;">
+          <span class="dot dot-active"></span>
+          GPU DETECTED
+        </span>
+      </div>
+
+      <div class="device-panel panel-flat">
+        <div class="device-grid">
+          <div class="device-cell">
+            <span class="label-xs">GPU</span>
+            <span class="device-value">{gpuName}</span>
+          </div>
+          {#if gpuInfo?.nvidia_vram}
+            <div class="device-cell">
+              <span class="label-xs">VRAM</span>
+              <span class="device-value">{gpuInfo.nvidia_vram}</span>
+            </div>
+          {/if}
+          {#if gpuInfo?.cuda_version}
+            <div class="device-cell">
+              <span class="label-xs">CUDA</span>
+              <span class="device-value">v{gpuInfo.cuda_version}</span>
+            </div>
+          {/if}
+          <div class="device-cell">
+            <span class="label-xs">BACKEND</span>
+            <span class="device-value">{gpuInfo?.recommended_variant?.toUpperCase() ?? "---"}</span>
+          </div>
+        </div>
+
+        <div class="gpu-layers-control">
+          <div class="setting-header">
+            <span class="label-xs">GPU LAYERS</span>
+            <span class="setting-value">
+              {gpuLayers < 0 ? "AUTO (ALL)" : gpuLayers === 0 ? "CPU ONLY" : gpuLayers}
+            </span>
+          </div>
+          <input
+            type="range"
+            min="-1"
+            max="99"
+            step="1"
+            bind:value={gpuLayers}
+            class="setting-slider"
+          />
+          <div class="gpu-hint">
+            <span class="label-xs" style="color: var(--text-muted);">
+              -1 = AUTO | 0 = CPU ONLY | 1-99 = OFFLOAD N LAYERS TO GPU
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  {/if}
+
   <!-- ── Settings ────────────────────────────────── -->
   <div class="section">
     <div class="section-label">
       <span class="divider-label">SETTINGS</span>
+      <button
+        class="btn btn-ghost"
+        style="margin-left: auto; font-size: 9px;"
+        onclick={() => showAdvanced = !showAdvanced}
+      >
+        {showAdvanced ? "HIDE ADVANCED" : "SHOW ADVANCED"}
+      </button>
     </div>
 
     <div class="settings-grid">
@@ -206,7 +409,7 @@
         <input
           type="range"
           min="16"
-          max="2048"
+          max="4096"
           step="16"
           bind:value={maxTokens}
           class="setting-slider"
@@ -227,19 +430,98 @@
         />
       </div>
     </div>
+
+    {#if showAdvanced}
+      <div class="settings-grid" style="margin-top: 8px;">
+        <div class="setting-cell">
+          <div class="setting-header">
+            <span class="label-xs">TOP-P (NUCLEUS)</span>
+            <span class="setting-value">{topP.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            bind:value={topP}
+            class="setting-slider"
+          />
+        </div>
+        <div class="setting-cell">
+          <div class="setting-header">
+            <span class="label-xs">TOP-K</span>
+            <span class="setting-value">{topK}</span>
+          </div>
+          <input
+            type="range"
+            min="1"
+            max="100"
+            step="1"
+            bind:value={topK}
+            class="setting-slider"
+          />
+        </div>
+        <div class="setting-cell">
+          <div class="setting-header">
+            <span class="label-xs">REPEAT PENALTY</span>
+            <span class="setting-value">{repeatPenalty.toFixed(2)}</span>
+          </div>
+          <input
+            type="range"
+            min="1.0"
+            max="2.0"
+            step="0.05"
+            bind:value={repeatPenalty}
+            class="setting-slider"
+          />
+        </div>
+        <div class="setting-cell">
+          <div class="setting-header">
+            <span class="label-xs">CONTEXT SIZE</span>
+            <span class="setting-value">{contextSize}</span>
+          </div>
+          <input
+            type="range"
+            min="512"
+            max="32768"
+            step="512"
+            bind:value={contextSize}
+            class="setting-slider"
+          />
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <!-- ── System Prompt ──────────────────────────── -->
+  <div class="section">
+    <div class="section-label">
+      <span class="divider-label">SYSTEM PROMPT</span>
+      <span class="label-xs" style="color: var(--text-muted); margin-left: 8px;">OPTIONAL</span>
+    </div>
+
+    <textarea
+      class="prompt-input system-prompt-input"
+      placeholder="Enter system prompt (e.g. 'You are a helpful assistant...')"
+      bind:value={systemPrompt}
+      rows="3"
+    ></textarea>
   </div>
 
   <!-- ── Prompt ──────────────────────────────────── -->
   <div class="section">
     <div class="section-label">
       <span class="divider-label">PROMPT</span>
+      <span class="label-xs" style="color: var(--text-muted); margin-left: 8px;">CTRL+ENTER TO GENERATE</span>
     </div>
 
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <textarea
       class="prompt-input"
       placeholder="Enter your prompt..."
       bind:value={prompt}
       rows="6"
+      onkeydown={handleKeydown}
     ></textarea>
   </div>
 
@@ -258,6 +540,16 @@
       </button>
     {/if}
     <button class="btn btn-secondary" onclick={handleClear}>CLEAR</button>
+
+    <div class="action-info">
+      {#if test.generating}
+        <span class="dot dot-working"></span>
+        <span class="label-xs" style="color: var(--info);">PROCESSING ON {deviceDisplay}</span>
+      {:else if test.result}
+        <span class="dot dot-success"></span>
+        <span class="label-xs" style="color: var(--success);">COMPLETE</span>
+      {/if}
+    </div>
   </div>
 
   <!-- ── Output ──────────────────────────────────── -->
@@ -289,11 +581,15 @@
           </div>
           <div class="stat-cell">
             <span class="label-xs">SPEED</span>
-            <span class="stat-value">{tokensPerSec} tok/s</span>
+            <span class="stat-value" style="color: var(--accent);">{tokensPerSec} tok/s</span>
           </div>
           <div class="stat-cell">
             <span class="label-xs">DEVICE</span>
-            <span class="stat-value">{test.result.device}</span>
+            <span class="stat-value" style={test.result.device !== "CPU" ? "color: var(--accent);" : ""}>{test.result.device}</span>
+          </div>
+          <div class="stat-cell">
+            <span class="label-xs">CHARS</span>
+            <span class="stat-value">{test.result.text.length}</span>
           </div>
         </div>
       {/if}
@@ -500,11 +796,103 @@
     padding: 6px 0;
   }
 
+  /* ── Presets ────────────────────────────────────── */
+  .presets-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px;
+  }
+
+  .preset-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-dim);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    transition: all var(--transition);
+  }
+
+  .preset-btn:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+  }
+
+  .preset-active {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+  }
+
+  .preset-icon {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0;
+  }
+
+  .preset-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+  }
+
+  .preset-active .preset-label {
+    color: var(--text-primary);
+  }
+
+  /* ── Device Panel ──────────────────────────────── */
+  .device-panel {
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .device-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border-dim);
+  }
+
+  .device-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    background: var(--bg-surface);
+  }
+
+  .device-value {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .gpu-layers-control {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .gpu-hint {
+    margin-top: 2px;
+  }
+
   /* ── Settings ──────────────────────────────────── */
   .settings-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
+    gap: 8px;
   }
 
   .setting-cell {
@@ -584,10 +972,17 @@
     border-color: var(--accent);
   }
 
+  .system-prompt-input {
+    min-height: 60px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
   /* ── Actions ───────────────────────────────────── */
   .action-row {
     display: flex;
     gap: 8px;
+    align-items: center;
   }
 
   .generate-btn {
@@ -597,11 +992,18 @@
     letter-spacing: 0.12em;
   }
 
+  .action-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+  }
+
   /* ── Output ────────────────────────────────────── */
   .output-panel {
     padding: 12px;
     min-height: 100px;
-    max-height: 400px;
+    max-height: 500px;
     overflow-y: auto;
   }
 
@@ -628,7 +1030,7 @@
 
   .stats-bar {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 1px;
     background: var(--border-dim);
     border: 1px solid var(--border-dim);
@@ -646,7 +1048,7 @@
     font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.06em;
-    color: var(--accent);
+    color: var(--text-primary);
   }
 
   /* ── Error ─────────────────────────────────────── */
@@ -661,13 +1063,25 @@
   }
 
   /* ── Responsive ────────────────────────────────── */
-  @media (max-width: 600px) {
+  @media (max-width: 700px) {
     .hero-specs {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .presets-grid {
+      grid-template-columns: repeat(3, 1fr);
     }
 
     .settings-grid {
       grid-template-columns: 1fr;
+    }
+
+    .device-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .stats-bar {
+      grid-template-columns: repeat(3, 1fr);
     }
   }
 </style>

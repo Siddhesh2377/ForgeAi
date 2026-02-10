@@ -11,6 +11,8 @@ use super::config::{MergeConfig, OutputFormat};
 use super::methods;
 use super::output;
 use super::planner::{TensorMergePlan, TensorOperation};
+use super::precompute;
+use super::projections;
 use super::registry::ParentRegistry;
 use super::tensor_io;
 
@@ -77,26 +79,92 @@ pub fn execute_merge(
         return Err(ModelError::MergeCancelled);
     }
 
-    // Phase 2: Planning
-    emit_phase(app, "planning", "Building merge plan");
+    // Phase 2: Pre-compute output manifest (tensor shapes + offsets, no data loading)
+    emit_phase(app, "planning", "Pre-computing tensor offsets");
+    let manifest = precompute::build_output_manifest(&plan.operations, registry)?;
+
     emit_progress(app, &MergeProgress {
         stage: "planning".into(),
         percent: 7.0,
-        message: format!("Plan: {} tensor operations", total_ops),
+        message: format!("Plan: {} tensors, {} estimated output",
+            manifest.tensors.len(),
+            crate::model::format_file_size(manifest.total_data_bytes)),
         current_tensor: None,
         tensors_done: 0,
         tensors_total: total_ops,
     });
 
-    // Determine base parent tensor loading function
+    if cancel.load(Ordering::Relaxed) {
+        return Err(ModelError::MergeCancelled);
+    }
+
+    // Determine base parent
     let base_parent = config.base_parent_id.as_ref().and_then(|id| registry.get(id));
+    let metadata_parent = base_parent.or_else(|| registry.all().first());
+    let output_path = &config.output.path;
 
-    // Phase 3: Merging
+    // Resolve parent config dir for GGUF metadata
+    let parent_config_dir = metadata_parent.map(|mp| {
+        if mp.is_dir {
+            mp.file_path.clone()
+        } else {
+            std::path::Path::new(&mp.file_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default()
+        }
+    });
+
+    // Phase 3: Open streaming writer + merge loop
     emit_phase(app, "merging", "Processing tensors");
-    let mut merged_tensors: Vec<(String, Tensor)> = Vec::new();
 
+    let (actual_file_path, aux_target_dir, mut writer) = match config.output.format {
+        OutputFormat::SafeTensors => {
+            let dir = std::path::Path::new(output_path);
+            std::fs::create_dir_all(dir).map_err(ModelError::IoError)?;
+            let model_file = dir.join("model.safetensors");
+            let file_str = model_file.to_string_lossy().to_string();
+            let st_writer = output::StreamingSafeTensorsWriter::new(&file_str, &manifest)?;
+            (file_str, output_path.clone(), output::StreamWriter::SafeTensors(st_writer))
+        }
+        OutputFormat::Gguf => {
+            let mp = metadata_parent
+                .ok_or_else(|| ModelError::MergeError("No parent for metadata".into()))?;
+
+            let source_gguf = if matches!(mp.format, crate::model::ModelFormat::Gguf) {
+                Some(mp.file_path.as_str())
+            } else {
+                None
+            };
+
+            let cfg_dir = if source_gguf.is_none() {
+                parent_config_dir.as_deref()
+            } else {
+                None
+            };
+
+            let gguf_writer = output::StreamingGgufWriter::new(
+                output_path,
+                &manifest,
+                &config.output.model_name,
+                source_gguf,
+                Some(&mp.compat),
+                cfg_dir,
+            )?;
+
+            let aux_dir = std::path::Path::new(output_path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            (output_path.clone(), aux_dir, output::StreamWriter::Gguf(gguf_writer))
+        }
+    };
+
+    // Streaming merge loop — each tensor is written immediately and dropped
     for op in &plan.operations {
         if cancel.load(Ordering::Relaxed) {
+            drop(writer);
+            let _ = std::fs::remove_file(&actual_file_path);
             return Err(ModelError::MergeCancelled);
         }
 
@@ -116,7 +184,7 @@ pub fn execute_merge(
                 });
 
                 let tensor = tensor_io::load_tensor(parent, tensor_name)?;
-                merged_tensors.push((tensor_name.clone(), tensor));
+                writer.write_tensor(&tensor)?;
                 tensors_done += 1;
             }
 
@@ -130,7 +198,6 @@ pub fn execute_merge(
                     tensors_total: total_ops,
                 });
 
-                // Load tensors from all parents
                 let mut parent_tensors: Vec<(Tensor, f64)> = Vec::new();
                 for (pid, weight) in parent_ids.iter().zip(weights.iter()) {
                     let parent = registry.get(pid).ok_or_else(|| {
@@ -140,7 +207,24 @@ pub fn execute_merge(
                     parent_tensors.push((tensor, *weight));
                 }
 
-                // Load base tensor if needed
+                // Apply projection if strategy is set and shapes mismatch
+                if let Some(ref proj_strategy) = config.projection_strategy {
+                    if parent_tensors.len() >= 2 {
+                        // Use first parent's shape as target
+                        let target_shape: Vec<usize> = parent_tensors[0].0.dims().to_vec();
+                        for i in 1..parent_tensors.len() {
+                            if parent_tensors[i].0.dims() != target_shape.as_slice() {
+                                let adapted = projections::adapt_tensor(
+                                    &parent_tensors[i].0,
+                                    &target_shape,
+                                    proj_strategy,
+                                )?;
+                                parent_tensors[i].0 = adapted;
+                            }
+                        }
+                    }
+                }
+
                 let base_tensor = if strategy.requires_base() {
                     if let Some(bp) = base_parent {
                         Some(tensor_io::load_tensor(bp, tensor_name)?)
@@ -159,7 +243,7 @@ pub fn execute_merge(
                     base_tensor.as_ref(),
                 )?;
 
-                merged_tensors.push((tensor_name.clone(), merged));
+                writer.write_tensor(&merged)?;
                 tensors_done += 1;
             }
 
@@ -188,96 +272,30 @@ pub fn execute_merge(
                     }
                 };
 
-                merged_tensors.push((tensor_name.clone(), tensor));
+                writer.write_tensor(&tensor)?;
                 tensors_done += 1;
             }
 
             TensorOperation::CopyMetadata { .. } => {
-                // Metadata is handled by the output writer
+                // Handled by auxiliary file copy below
             }
         }
     }
 
-    if cancel.load(Ordering::Relaxed) {
-        return Err(ModelError::MergeCancelled);
-    }
-
-    // Phase 4: Writing output
-    emit_phase(app, "writing", "Writing output file");
+    // Phase 4: Finalize output
+    emit_phase(app, "writing", "Finalizing output file");
     emit_progress(app, &MergeProgress {
         stage: "writing".into(),
         percent: 91.0,
-        message: format!("Writing {} tensors to output...", merged_tensors.len()),
+        message: format!("Finalizing {} tensors...", tensors_done),
         current_tensor: None,
         tensors_done,
         tensors_total: total_ops,
     });
 
-    let output_path = &config.output.path;
+    writer.finish()?;
 
-    // For GGUF output, resolve metadata parent up front
-    let metadata_parent = base_parent
-        .or_else(|| registry.all().first());
-
-    // Resolve the config.json directory from the metadata parent
-    let parent_config_dir = metadata_parent.map(|mp| {
-        if mp.is_dir {
-            mp.file_path.clone()
-        } else {
-            std::path::Path::new(&mp.file_path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default()
-        }
-    });
-
-    // Determine the actual file path written and the directory for aux files
-    let (actual_file_path, aux_target_dir) = match config.output.format {
-        OutputFormat::SafeTensors => {
-            // SafeTensors: output_path is a directory; write model.safetensors inside
-            let dir = std::path::Path::new(output_path);
-            std::fs::create_dir_all(dir).map_err(ModelError::IoError)?;
-            let model_file = dir.join("model.safetensors");
-            let file_str = model_file.to_string_lossy().to_string();
-            output::write_safetensors(&file_str, &merged_tensors)?;
-            (file_str, output_path.clone())
-        }
-        OutputFormat::Gguf => {
-            let mp = metadata_parent
-                .ok_or_else(|| ModelError::MergeError("No parent for metadata".into()))?;
-
-            // If source is GGUF, copy its raw metadata verbatim
-            let source_gguf = if matches!(mp.format, crate::model::ModelFormat::Gguf) {
-                Some(mp.file_path.as_str())
-            } else {
-                None
-            };
-
-            // For safetensors→GGUF: pass compat info + config.json directory
-            let cfg_dir = if source_gguf.is_none() {
-                parent_config_dir.as_deref()
-            } else {
-                None
-            };
-
-            output::write_gguf(
-                output_path,
-                &merged_tensors,
-                &config.output.model_name,
-                source_gguf,
-                Some(&mp.compat),
-                cfg_dir,
-            )?;
-
-            let aux_dir = std::path::Path::new(output_path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            (output_path.clone(), aux_dir)
-        }
-    };
-
-    // Phase 4b: Copy auxiliary files (tokenizer, config, etc.)
+    // Phase 4b: Copy auxiliary files
     emit_phase(app, "copying", "Copying tokenizer and config files");
     let copied_files = copy_auxiliary_files(&aux_target_dir, registry, config.base_parent_id.as_deref());
 
@@ -308,7 +326,7 @@ pub fn execute_merge(
         output_path: actual_file_path,
         output_size,
         output_size_display: crate::model::format_file_size(output_size),
-        tensors_written: merged_tensors.len(),
+        tensors_written: tensors_done,
         method: config.method.display_name().to_string(),
         copied_files,
     })
@@ -341,7 +359,6 @@ fn copy_auxiliary_files(
         let _ = std::fs::create_dir_all(output_dir);
     }
 
-    // Find source directory: prefer base parent, then first dir-based parent, then any parent
     let source_dir = base_parent_id
         .and_then(|id| registry.get(id))
         .or_else(|| registry.all().iter().find(|p| p.is_dir))

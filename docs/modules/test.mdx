@@ -1,12 +1,14 @@
 ---
 title: "Test"
-description: "Run inference on loaded models with real-time token streaming and performance stats"
+description: "Run inference on models with real-time token streaming, quick test presets, and full generation control"
 icon: "play"
 ---
 
 # Test (09)
 
-Run text generation on GGUF or SafeTensors models with real-time token streaming.
+Run text generation on GGUF or SafeTensors models with real-time token streaming, 6 quick test presets, and full control over generation parameters.
+
+<img src="/images/light/test.png" alt="Test Module" />
 
 ## Model Selection
 
@@ -29,6 +31,19 @@ Run text generation on GGUF or SafeTensors models with real-time token streaming
   For SafeTensors models, use the **folder path** (containing config.json and tokenizer), not an individual `.safetensors` file.
 </Warning>
 
+## Quick Test Presets
+
+Click a preset to instantly fill in a test prompt:
+
+| Preset | Prompt Theme | Tests |
+|--------|-------------|-------|
+| **CODE** | FizzBuzz in Python | Code generation ability |
+| **MATH** | Word problem solving | Mathematical reasoning |
+| **REASON** | Logic puzzle | Logical deduction |
+| **CREATIVE** | Story writing | Creative writing |
+| **INSTRUCT** | Step-by-step tasks | Instruction following |
+| **CHAT** | Conversational | General chat ability |
+
 ## Inference Engines
 
 | Format | Engine | Device |
@@ -40,14 +55,21 @@ Run text generation on GGUF or SafeTensors models with real-time token streaming
 
 | Parameter | Range | Default | Description |
 |-----------|:-----:|:-------:|-------------|
-| Max Tokens | 16–2048 | 256 | Maximum tokens to generate |
-| Temperature | 0–2 | 0.7 | Randomness. 0 = deterministic, higher = more creative |
+| Max Tokens | 1–8192 | 256 | Maximum tokens to generate |
+| Temperature | 0–2 | 0.7 | Randomness. 0 = deterministic |
+| Top-p | 0–1 | 0.9 | Nucleus sampling threshold |
+| Top-k | 1–100 | 40 | Top-k token sampling |
+| Repeat Penalty | 1.0–2.0 | 1.1 | Repetition suppression |
+| Context Size | 512–32768 | 2048 | Context window size |
+| GPU Layers | -1 to 99 | -1 | Layer offloading (-1=auto, 0=CPU) |
+
+## System Prompt
+
+Add a custom system message to guide model behavior (e.g., "You are a helpful coding assistant.").
 
 ## Output
 
-Tokens stream into the output panel in real time with a blinking cursor.
-
-After completion, a stats bar shows:
+Tokens stream into the output panel in real time. After completion, a stats bar shows:
 
 | Stat | Description |
 |------|-------------|
@@ -56,24 +78,7 @@ After completion, a stats bar shows:
 | SPEED | Tokens per second |
 | DEVICE | CPU or CUDA |
 
-## Workflow
-
-<Steps>
-  <Step title="Select model">
-    Use any of the four selection methods above
-  </Step>
-  <Step title="Enter prompt">
-    Type your prompt in the text area
-  </Step>
-  <Step title="Configure">
-    Adjust Max Tokens and Temperature sliders if needed
-  </Step>
-  <Step title="Generate">
-    Click **GENERATE** and watch real-time output
-  </Step>
-</Steps>
-
 ## GPU Acceleration
 
-- **GGUF**: Uses GPU if llama.cpp was installed with CUDA or Vulkan variant
-- **SafeTensors**: Tries CUDA GPU first; falls back to CPU if out of memory
+- **GGUF**: Uses GPU if llama.cpp was installed with CUDA or Vulkan variant. GPU layers setting controls how many layers are offloaded to GPU.
+- **SafeTensors**: Tries CUDA GPU first; falls back to CPU if out of memory.
